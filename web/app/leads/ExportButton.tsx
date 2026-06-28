@@ -1,7 +1,8 @@
 "use client";
 
 import { useTransition } from "react";
-import { exportLeadsCsv, type LeadFilters } from "./actions";
+import { exportLeadsCsv } from "./actions";
+import type { LeadFilters } from "./filters";
 
 export function ExportButton({ filters }: { filters: LeadFilters }) {
   const [pending, start] = useTransition();

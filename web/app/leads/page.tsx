@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getServerClient } from "@/lib/supabase/server";
 import type { Lead, LeadStatus } from "@/lib/types";
 import { ALL_STAGES, STAGE_LABEL, STAGE_CLASS } from "@/lib/stages";
-import { applyFilters, type LeadFilters } from "./actions";
+import { applyFilters, type LeadFilters } from "./filters";
 import { ExportButton } from "./ExportButton";
 
 // Always read live (this is an ops console; freshness > cache here).

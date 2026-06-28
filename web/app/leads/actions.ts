@@ -1,36 +1,9 @@
 "use server";
 
 import { getServerClient } from "@/lib/supabase/server";
+import { CSV_COLS, applyFilters, type LeadFilters } from "./filters";
 
-export interface LeadFilters {
-  q?: string;
-  platform?: string;
-  status?: string;
-  segment?: string;
-  minScore?: number;
-}
-
-const CSV_COLS = [
-  "id", "identity_key", "segment", "niche", "platform",
-  "follower_band", "follower_count", "icp_score", "priority_rank",
-  "status", "source", "created_at",
-] as const;
-
-/** Apply the shared filter set to a Supabase query builder. */
-function applyFilters(query: any, f: LeadFilters) {
-  if (f.platform) query = query.eq("platform", f.platform);
-  if (f.status) query = query.eq("status", f.status);
-  if (f.segment) query = query.eq("segment", f.segment);
-  if (typeof f.minScore === "number" && !Number.isNaN(f.minScore)) {
-    query = query.gte("icp_score", f.minScore);
-  }
-  if (f.q && f.q.trim()) {
-    const term = `%${f.q.trim()}%`;
-    // identity_key OR niche match (both indexed text columns).
-    query = query.or(`identity_key.ilike.${term},niche.ilike.${term}`);
-  }
-  return query;
-}
+export type { LeadFilters };
 
 /** Export up to `limit` filtered leads as a CSV string (server-side, past RLS). */
 export async function exportLeadsCsv(
@@ -58,5 +31,3 @@ export async function exportLeadsCsv(
     return { ok: false, error: (e as Error).message };
   }
 }
-
-export { applyFilters, CSV_COLS };
