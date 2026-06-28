@@ -1,0 +1,19 @@
+# Exly Autonomous Outbound Engine — dependencies
+# Install:  python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+# Then:     .venv/bin/python -m playwright install chromium   (one-time browser download, ~150MB)
+
+# --- Currently used (sourcing/meta_ads scraper) ---
+playwright==1.49.1        # headless Chromium automation for the Ad Library scraper
+beautifulsoup4==4.12.3    # HTML parsing / fallback contact extraction
+
+# Everything else the scraper uses is the Python standard library
+# (asyncio, json, csv, re, os, sys, io, random, glob, datetime, collections).
+
+# --- L0 Data Foundation (in use) ---
+psycopg[binary]>=3.2       # L0 Lead DB (Postgres) — connection + migrations
+python-dotenv>=1.0         # config/secrets loading (DATABASE_URL via .env)
+
+# --- Reserved for upcoming layers (uncomment as you build them) ---
+# pgvector>=0.3            # L6 KB embeddings (DEFERRED — L0 does not need it)
+# anthropic>=0.40          # L3 personalization + L6 reply handling (Haiku/Sonnet)
+# httpx>=0.27              # channel adapters (WhatsApp BSP, ESP, LinkedIn)

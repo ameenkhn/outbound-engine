@@ -1,0 +1,12 @@
+# L4 — email channel adapter dependencies
+# Install (additive, on top of requirements.txt):
+#   .venv/bin/pip install -r requirements-email.txt
+#
+# The SMTP transport uses ONLY the Python standard library (smtplib, email),
+# so nothing here is needed for SMTP sending or for the test suite (tests use
+# FakeTransport and never import httpx).
+#
+# httpx is reserved for a FUTURE ESP HTTP transport (SendGrid / Postmark / SES
+# API) that implements the same Transport interface. It is lazily imported by
+# that transport only, so this requirement is optional until you build it.
+httpx>=0.27

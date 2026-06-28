@@ -1,0 +1,6 @@
+# Optional deps for the inbound HTTP webhook layer (inbound/webhook.py).
+# The handlers and classifier need NONE of these — they are pure / DB-only and
+# are imported and tested without FastAPI. Install these only to actually SERVE
+# the ESP webhooks:  pip install -r inbound/requirements-inbound.txt
+fastapi>=0.110
+uvicorn>=0.29

@@ -1,0 +1,53 @@
+import "./globals.css";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { ThemeToggle } from "@/components/ThemeToggle";
+
+export const metadata: Metadata = {
+  title: "Exly Outbound — CRM",
+  description: "Operating console for the Exly Autonomous Outbound Engine.",
+};
+
+const NAV = [
+  { href: "/", label: "Home" },
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/leads", label: "Leads" },
+  { href: "/pipeline", label: "Pipeline" },
+  { href: "/sourcing", label: "L1 · Sourcing" },
+  { href: "/scoring", label: "L2 · Scoring" },
+];
+
+// Runs before paint: applies the saved (or system) theme so there's no flash.
+const NO_FLASH = `(() => {
+  try {
+    const t = localStorage.getItem("theme");
+    const dark = t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    if (dark) document.documentElement.classList.add("dark");
+  } catch (e) {}
+})();`;
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: NO_FLASH }} />
+      </head>
+      <body>
+        <div className="mx-auto max-w-7xl px-4">
+          <header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line py-3">
+            <span className="font-semibold">Exly Outbound</span>
+            <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              {NAV.map((n) => (
+                <Link key={n.href} href={n.href} className="text-muted hover:text-ink">
+                  {n.label}
+                </Link>
+              ))}
+            </nav>
+            <ThemeToggle />
+          </header>
+          <main className="py-6">{children}</main>
+        </div>
+      </body>
+    </html>
+  );
+}

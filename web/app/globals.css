@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Palette as RGB triplets so Tailwind's `rgb(var(--x) / <alpha>)` tokens work.
+   Light is the default; adding `.dark` on <html> flips every semantic color. */
+:root {
+  --bg: 248 250 252;     /* slate-50  */
+  --card: 255 255 255;   /* white     */
+  --ink: 15 23 42;       /* slate-900 */
+  --muted: 100 116 139;  /* slate-500 */
+  --line: 226 232 240;   /* slate-200 */
+  --accent: 79 70 229;   /* indigo-600*/
+  color-scheme: light;
+}
+
+.dark {
+  --bg: 9 13 22;         /* near-black navy */
+  --card: 20 26 38;
+  --ink: 226 232 240;    /* slate-200 */
+  --muted: 138 160 189;
+  --line: 36 48 68;
+  --accent: 99 130 255;  /* brighter indigo for contrast on dark */
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-bg text-ink antialiased;
+}
+
+/* tiny utilities used across the ops screens (now theme-aware) */
+.card {
+  @apply rounded-lg border border-line bg-card p-4 shadow-sm;
+}
+.btn {
+  @apply inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50;
+}
+.btn-ghost {
+  @apply inline-flex items-center gap-1 rounded-md border border-line bg-card px-3 py-1.5 text-sm font-medium text-ink hover:bg-bg;
+}
+.pill {
+  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+}
+.th {
+  @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted;
+}
+.td {
+  @apply px-3 py-2 text-sm border-t border-line;
+}
+.input {
+  @apply w-full rounded-md border border-line bg-card px-2.5 py-1.5 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none;
+}
+
+/* In dark mode, soften the light status-pill backgrounds (bg-*-100) the screens
+   use so colored pills don't glare. Their text colors stay readable. */
+.dark [class*="bg-slate-100"] { background-color: rgb(255 255 255 / 0.06); }
+.dark [class*="bg-blue-100"],
+.dark [class*="bg-indigo-100"],
+.dark [class*="bg-violet-100"],
+.dark [class*="bg-amber-100"],
+.dark [class*="bg-green-100"],
+.dark [class*="bg-red-100"] { background-color: rgb(255 255 255 / 0.08); }

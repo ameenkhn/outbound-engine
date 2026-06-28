@@ -1,0 +1,7 @@
+# L3 — Personalization Engine extra dependency.
+#
+# Only the real AnthropicGenerator needs this; it is imported lazily inside the
+# call, and the tests use FakeGenerator, so the suite runs without it installed.
+# Install when wiring the live Haiku-class generator:
+#     pip install -r personalization/requirements-personalization.txt
+anthropic>=0.40

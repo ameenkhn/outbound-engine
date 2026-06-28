@@ -1,0 +1,15 @@
+# Lane C — durable workflow orchestrator (decision 1B / T4).
+# Install ON TOP of requirements.txt to run the beat scheduler + workers:
+#   .venv/bin/pip install -r requirements-orchestration.txt
+#
+# These are runtime-only: the durable queue (orchestration/queue.py), the rate
+# limiter (orchestration/rate_limit.py) and the dispatch logic
+# (orchestration/tasks.py) all import and run WITHOUT celery/redis (the celery
+# import in orchestration/celery_app.py is guarded). You only need these to
+# actually start the broker-backed scheduler / workers:
+#   celery -A orchestration.celery_app:app worker --beat --queues outbound
+
+-r requirements.txt
+
+celery>=5.3,<6        # durable task queue + beat scheduler (the orchestration trigger)
+redis>=5.0            # broker + result backend  (REDIS_URL, default redis://localhost:6379/0)

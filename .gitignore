@@ -1,0 +1,37 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+
+# ---- Virtual environments ----
+.venv/
+venv/
+env/
+
+# ---- Scraper / engine runtime output (contains scraped PII — never commit) ----
+scraper_results/
+*.log
+debug_results.json
+facebook_page_debug.html
+*_partial.json
+*_pool.json
+*_progress.json
+*_leads*.json
+*_leads*.csv
+*_contacts*.csv
+*_FINAL.*
+
+# ---- Secrets / config (API keys for WhatsApp BSP, ESP, LLMs, DB) ----
+.env
+.env.*
+!.env.example
+*.pem
+secrets.json
+credentials.json
+
+# ---- OS / editor ----
+.DS_Store
+.idea/
+.vscode/
+*.swp

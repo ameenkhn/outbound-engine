@@ -1,0 +1,15 @@
+# L1 — AI Targeting brain + sourcing expansion dependencies
+# Install (additive, on top of requirements.txt):
+#   .venv/bin/pip install -r requirements-targeting.txt
+#
+# Everything here is LAZILY imported (inside the call that needs it), so neither
+# importing the L1 modules nor running the test suite (which uses Fakes) requires
+# any of these. Install them only to run the brain / adapters against live APIs.
+
+# Sonnet-class targeting brain (targeting/brain.py — model claude-sonnet-4-6).
+anthropic>=0.40
+
+# YouTube Data API v3 client (sourcing/youtube/adapter.py — HttpxYouTubeClient).
+# Already pinned in requirements-email.txt for the ESP transport; repeated here
+# so this layer is self-describing.
+httpx>=0.27
