@@ -22,11 +22,29 @@ export default async function DashboardPage() {
 
   const now = new Date();
 
-  // ---- leads: status + segment counts (one read, bucket in JS) -------------
-  const { data: leadRows } = await supa
-    .from("leads")
-    .select("status,segment,created_at")
-    .limit(10000);
+  // Fire every read in PARALLEL. The DB is far away, so sequential awaits stack
+  // latency (6 round-trips back-to-back); Promise.all collapses them into a
+  // single wall-clock wait — the main reason the dashboard felt slow.
+  const [
+    { data: leadRows },
+    { data: convRows },
+    { data: msgRows },
+    { count: complaintCount },
+    { count: suppressionCount },
+    { data: awaiting },
+  ] = await Promise.all([
+    supa.from("leads").select("status,segment,created_at").limit(10000),
+    supa.from("conversions").select("demo_booked_at,status,created_at")
+      .not("demo_booked_at", "is", null).limit(10000),
+    supa.from("messages").select("delivery_status,sent_at").limit(10000),
+    supa.from("events").select("*", { count: "exact", head: true }).eq("type", "complaint"),
+    supa.from("suppression").select("*", { count: "exact", head: true }),
+    supa.from("leads").select("id,identity_key,segment,niche,icp_score,status,updated_at")
+      .in("status", ["replied", "in_conversation"])
+      .order("updated_at", { ascending: true }).limit(12),
+  ]);
+
+  // ---- leads: status + segment counts (bucket in JS) -----------------------
   const leads = leadRows ?? [];
   const byStatus = (s: LeadStatus) => leads.filter((l) => l.status === s).length;
   const stageCounts = Object.fromEntries(
@@ -48,11 +66,6 @@ export default async function DashboardPage() {
     leads.filter((l) => l.segment === seg && stages.includes(l.status as LeadStatus)).length;
 
   // ---- conversions: demos this week + 8-week trend + no-shows --------------
-  const { data: convRows } = await supa
-    .from("conversions")
-    .select("demo_booked_at,status,created_at")
-    .not("demo_booked_at", "is", null)
-    .limit(10000);
   const convs = convRows ?? [];
   const weekStart = now.getTime() - 7 * DAY;
   const demosThisWeek = convs.filter((c) => new Date(c.demo_booked_at as string).getTime() > weekStart).length;
@@ -68,28 +81,13 @@ export default async function DashboardPage() {
   const noShows = convs.filter((c) => c.status === "no_show").length;
 
   // ---- reputation: delivery breakdown + bounce rate ------------------------
-  const { data: msgRows } = await supa
-    .from("messages")
-    .select("delivery_status,sent_at")
-    .limit(10000);
   const msgs = msgRows ?? [];
   const dcount = (st: string) => msgs.filter((m) => m.delivery_status === st).length;
   const attempted = dcount("sent") + dcount("delivered") + dcount("bounced");
   const bounceRate = attempted > 0 ? ((dcount("bounced") / attempted) * 100).toFixed(1) : "0.0";
   const sentToday = msgs.filter((m) => m.sent_at && new Date(m.sent_at).getTime() > now.getTime() - DAY).length;
 
-  const { count: complaintCount } = await supa
-    .from("events").select("*", { count: "exact", head: true }).eq("type", "complaint");
-  const { count: suppressionCount } = await supa
-    .from("suppression").select("*", { count: "exact", head: true });
-
   // ---- what needs me: awaiting human reply ---------------------------------
-  const { data: awaiting } = await supa
-    .from("leads")
-    .select("id,identity_key,segment,niche,icp_score,status,updated_at")
-    .in("status", ["replied", "in_conversation"])
-    .order("updated_at", { ascending: true })
-    .limit(12);
   const awaitingList = awaiting ?? [];
 
   return (
