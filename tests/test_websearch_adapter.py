@@ -14,6 +14,10 @@ from targeting.brain import TargetSpec
 from sourcing.websearch.adapter import (
     WebSearchAdapter,
     FakeWebSearchClient,
+    DuckDuckGoSearchClient,
+    default_websearch_client,
+    parse_ddg_html,
+    _ddg_decode,
     result_to_candidate,
     needs_enrichment,
     enrich_candidates,
@@ -138,3 +142,65 @@ def test_enrich_budget_zero_does_nothing():
                   "attributes": {"advertiser": "X"}}
     assert enrich_candidates([incomplete], client=client, budget=0) == 0
     assert client.search_calls == 0
+
+
+# --- free DuckDuckGo backend -------------------------------------------------
+
+def test_ddg_decode_extracts_real_url():
+    href = "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.instagram.com%2Fyogamaya%2F&rut=abc"
+    assert _ddg_decode(href) == "https://www.instagram.com/yogamaya/"
+    assert _ddg_decode("https://example.com/x") == "https://example.com/x"
+    assert _ddg_decode("") is None
+
+
+def test_parse_ddg_html_extracts_results():
+    html = """
+    <div class="result results_links web-result">
+      <h2 class="result__title">
+        <a class="result__a"
+           href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.instagram.com%2Fyogamaya%2F">Yoga Maya (@yogamaya)</a>
+      </h2>
+      <a class="result__snippet">Online yoga coach in Delhi. Email maya@yoga.in</a>
+    </div>
+    <div class="result">
+      <h2 class="result__title">
+        <a class="result__a"
+           href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fin.linkedin.com%2Fin%2Framesh-k">Ramesh K</a>
+      </h2>
+      <a class="result__snippet">Performance coach.</a>
+    </div>
+    """
+    results = parse_ddg_html(html)
+    assert len(results) == 2
+    assert results[0]["url"] == "https://www.instagram.com/yogamaya/"
+    assert "maya@yoga.in" in results[0]["snippet"]
+    assert results[1]["url"] == "https://in.linkedin.com/in/ramesh-k"
+
+
+def test_default_client_is_duckduckgo_without_api_base(monkeypatch):
+    monkeypatch.delenv("WEBSEARCH_API_BASE", raising=False)
+    assert isinstance(default_websearch_client(), DuckDuckGoSearchClient)
+
+
+def test_ddg_client_parses_and_pages(monkeypatch):
+    """search() parses a fake HTML response and offers a next-page cursor."""
+    sample = """
+    <div class="result"><h2 class="result__title">
+      <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Finstagram.com%2Facoach">A Coach</a>
+    </h2><a class="result__snippet">hi@a.in</a></div>
+    """
+
+    class _Resp:
+        status_code = 200
+        text = sample
+        def raise_for_status(self): pass
+
+    # search() does `from sourcing._http import request_with_retry`, which binds
+    # the name in the sourcing._http module — patch it there.
+    import sourcing._http as http
+    monkeypatch.setattr(http, "request_with_retry", lambda *a, **k: _Resp(), raising=True)
+
+    client = DuckDuckGoSearchClient()
+    results, nxt = client.search("fitness coach instagram")
+    assert results and results[0]["url"] == "https://instagram.com/acoach"
+    assert nxt == "30"   # next offset offered

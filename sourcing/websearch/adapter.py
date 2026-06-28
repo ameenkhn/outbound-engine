@@ -35,11 +35,12 @@ from sourcing.base import SourceAdapter
 
 logger = logging.getLogger("sourcing.websearch")
 
-DEFAULT_SEARCH_BUDGET = 8          # max result pages per run per spec
+DEFAULT_SEARCH_BUDGET = 16         # max result pages per run per spec (deeper)
 
 #: Contact-intent suffixes appended to each keyword to bias results toward
-#: pages that actually expose a way to reach the creator.
-INTENT_SUFFIXES = ("email", "contact", "instagram")
+#: pages that actually expose a way to reach the creator. Covers both sides of
+#: the ICP: direct contact pages AND public Instagram / LinkedIn profiles.
+INTENT_SUFFIXES = ("email", "contact", "instagram", "linkedin")
 
 
 class RateLimited(Exception):
@@ -140,6 +141,96 @@ class FakeWebSearchClient(WebSearchClient):
             return [], None
         page = pages[idx]
         return list(page.get("results", [])), page.get("next")
+
+
+def _ddg_decode(href: str) -> Optional[str]:
+    """Turn a DuckDuckGo result link into the real destination URL.
+
+    DDG wraps result links as ``//duckduckgo.com/l/?uddg=<url-encoded-target>``.
+    We pull the ``uddg`` param and decode it; a plain http(s) link is returned
+    as-is.
+    """
+    from urllib.parse import parse_qs, unquote, urlparse
+
+    if not href:
+        return None
+    if href.startswith("//"):
+        href = "https:" + href
+    parsed = urlparse(href)
+    if "duckduckgo.com" in parsed.netloc and parsed.path.startswith("/l/"):
+        uddg = parse_qs(parsed.query).get("uddg", [None])[0]
+        return unquote(uddg) if uddg else None
+    return href if parsed.scheme in ("http", "https") else None
+
+
+def parse_ddg_html(html: str) -> List[Dict[str, Any]]:
+    """Parse DuckDuckGo HTML-endpoint results into title/url/snippet dicts.
+
+    Kept separate from the network call so it's unit-testable with fixture HTML.
+    """
+    from bs4 import BeautifulSoup  # already a dependency (used by the Meta scraper)
+
+    soup = BeautifulSoup(html or "", "html.parser")
+    out: List[Dict[str, Any]] = []
+    for res in soup.select(".result"):
+        a = res.select_one("a.result__a")
+        if not a:
+            continue
+        url = _ddg_decode(a.get("href", ""))
+        if not url:
+            continue
+        snip = res.select_one(".result__snippet")
+        out.append({
+            "title": a.get_text(" ", strip=True),
+            "url": url,
+            "snippet": snip.get_text(" ", strip=True) if snip else "",
+        })
+    return out
+
+
+class DuckDuckGoSearchClient(WebSearchClient):
+    """Free, key-less web search via DuckDuckGo's HTML endpoint.
+
+    Public search results only — no login, no API key, no account. This is the
+    default when ``WEBSEARCH_API_BASE`` isn't set, so web-search discovery and
+    enrichment work out of the box for free. Best-effort: DuckDuckGo may
+    rate-limit aggressive use, so it suits modest volumes / getting started; for
+    high volume, plug in a paid provider via ``HttpWebSearchClient``.
+    """
+
+    HTML_URL = "https://html.duckduckgo.com/html/"
+    PAGE_STEP = 30  # DDG advances results in steps of ~30 via the `s` offset
+
+    def __init__(self, timeout: float = 20.0) -> None:
+        self.timeout = timeout
+
+    def search(self, query: str, cursor: Optional[str] = None):
+        from sourcing._http import request_with_retry
+
+        params: Dict[str, Any] = {"q": query, "kl": "in-en"}  # India-localised results
+        if cursor:
+            params["s"] = cursor  # result offset for paging
+        resp = request_with_retry(self.HTML_URL, params=params, timeout=self.timeout)
+        if resp.status_code == 429:
+            raise RateLimited(query)
+        resp.raise_for_status()
+
+        results = parse_ddg_html(resp.text)
+        # Offer a next-page cursor only while pages keep returning results; the
+        # adapter's search_budget bounds total pages so this can't run away.
+        next_cursor = None
+        if results:
+            base = int(cursor) if (cursor and str(cursor).isdigit()) else 0
+            next_cursor = str(base + self.PAGE_STEP)
+        return results, next_cursor
+
+
+def default_websearch_client() -> WebSearchClient:
+    """Pick the web-search backend: a configured paid provider if present, else
+    the free DuckDuckGo client (no key needed)."""
+    if os.environ.get("WEBSEARCH_API_BASE"):
+        return HttpWebSearchClient()
+    return DuckDuckGoSearchClient()
 
 
 # ---------------------------------------------------------------------------
@@ -260,7 +351,8 @@ class WebSearchAdapter(SourceAdapter):
         search_budget: int = DEFAULT_SEARCH_BUDGET,
         intent_suffixes: Tuple[str, ...] = INTENT_SUFFIXES,
     ) -> None:
-        self.client = client or HttpWebSearchClient()
+        # Free DuckDuckGo client by default (no key); paid provider if configured.
+        self.client = client or default_websearch_client()
         self.search_budget = search_budget
         self.intent_suffixes = intent_suffixes
 
@@ -425,7 +517,7 @@ def enrich_candidates(
     if budget <= 0:
         return 0
     if client is None:
-        client = HttpWebSearchClient()
+        client = default_websearch_client()
 
     used = 0
     filled = 0

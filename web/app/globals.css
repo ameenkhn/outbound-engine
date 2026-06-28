@@ -2,57 +2,103 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Palette as RGB triplets so Tailwind's `rgb(var(--x) / <alpha>)` tokens work.
-   Light is the default; adding `.dark` on <html> flips every semantic color. */
+/* ── Design tokens (RGB triplets so Tailwind `rgb(var(--x)/<alpha>)` works) ── */
 :root {
-  --bg: 248 250 252;     /* slate-50  */
-  --card: 255 255 255;   /* white     */
-  --ink: 15 23 42;       /* slate-900 */
-  --muted: 100 116 139;  /* slate-500 */
-  --line: 226 232 240;   /* slate-200 */
-  --accent: 79 70 229;   /* indigo-600*/
+  --bg: 247 248 251;
+  --card: 255 255 255;
+  --ink: 17 24 39;
+  --muted: 107 114 128;
+  --line: 229 231 235;
+  --accent: 79 70 229;       /* indigo-600 */
+  --accent-2: 139 92 246;    /* violet-500 — for gradients */
+  --shadow-sm: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.08);
+  --shadow-lg: 0 14px 36px -14px rgba(16,24,40,.28);
   color-scheme: light;
 }
-
 .dark {
-  --bg: 9 13 22;         /* near-black navy */
-  --card: 20 26 38;
-  --ink: 226 232 240;    /* slate-200 */
-  --muted: 138 160 189;
-  --line: 36 48 68;
-  --accent: 99 130 255;  /* brighter indigo for contrast on dark */
+  --bg: 8 11 18;
+  --card: 18 24 36;
+  --ink: 226 232 240;
+  --muted: 148 163 184;
+  --line: 31 41 55;
+  --accent: 129 140 248;     /* brighter on dark */
+  --accent-2: 167 139 250;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-lg: 0 18px 44px -18px rgba(0,0,0,.65);
   color-scheme: dark;
 }
 
 body {
   @apply bg-bg text-ink antialiased;
+  background-image:
+    radial-gradient(60rem 60rem at 110% -10%, rgb(var(--accent) / 0.06), transparent 60%),
+    radial-gradient(50rem 50rem at -10% 0%, rgb(var(--accent-2) / 0.05), transparent 55%);
+  background-attachment: fixed;
 }
 
-/* tiny utilities used across the ops screens (now theme-aware) */
+/* slim, themed scrollbars */
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--line)) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: rgb(var(--line)); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+
+/* ── Components ────────────────────────────────────────────────────────── */
 .card {
-  @apply rounded-lg border border-line bg-card p-4 shadow-sm;
+  @apply rounded-xl border border-line bg-card p-5;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
 }
-.btn {
-  @apply inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50;
-}
-.btn-ghost {
-  @apply inline-flex items-center gap-1 rounded-md border border-line bg-card px-3 py-1.5 text-sm font-medium text-ink hover:bg-bg;
-}
-.pill {
-  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
-}
-.th {
-  @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted;
-}
-.td {
-  @apply px-3 py-2 text-sm border-t border-line;
-}
-.input {
-  @apply w-full rounded-md border border-line bg-card px-2.5 py-1.5 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none;
+.card-hover { cursor: pointer; }
+.card-hover:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+  border-color: rgb(var(--accent) / 0.45);
 }
 
-/* In dark mode, soften the light status-pill backgrounds (bg-*-100) the screens
-   use so colored pills don't glare. Their text colors stay readable. */
+.btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold text-white;
+  background-image: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent-2)));
+  box-shadow: 0 1px 2px rgba(16,24,40,.12);
+  transition: opacity .15s ease, transform .05s ease, box-shadow .15s ease;
+}
+.btn:hover { opacity: .93; box-shadow: var(--shadow-lg); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .5; box-shadow: none; cursor: not-allowed; }
+
+.btn-ghost {
+  @apply inline-flex items-center gap-1.5 rounded-lg border border-line bg-card px-3.5 py-2 text-sm font-medium text-ink;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.btn-ghost:hover { @apply bg-bg; border-color: rgb(var(--accent) / 0.45); }
+.btn-ghost:disabled { opacity: .5; cursor: not-allowed; }
+
+.pill { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium; }
+
+.th { @apply px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted; }
+.td { @apply px-3 py-2.5 text-sm border-t border-line; }
+tbody tr { transition: background-color .12s ease; }
+tbody tr:hover { background: rgb(var(--accent) / 0.04); }
+
+.input, input[type="text"], input[type="number"], select, textarea {
+  @apply w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.input:focus, input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: rgb(var(--accent) / 0.6);
+  box-shadow: 0 0 0 3px rgb(var(--accent) / 0.15);
+}
+
+/* subtle entrance for cards/sections */
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise .35s ease both; }
+
+/* gradient text accent for headings */
+.grad-text {
+  background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent-2)));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* In dark mode, soften the light status-pill backgrounds the screens use. */
 .dark [class*="bg-slate-100"] { background-color: rgb(255 255 255 / 0.06); }
 .dark [class*="bg-blue-100"],
 .dark [class*="bg-indigo-100"],

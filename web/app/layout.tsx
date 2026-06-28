@@ -33,20 +33,30 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH }} />
       </head>
       <body>
-        <div className="mx-auto max-w-7xl px-4">
-          <header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line py-3">
-            <span className="font-semibold">Exly Outbound</span>
-            <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        <header className="sticky top-0 z-20 border-b border-line bg-card/80 backdrop-blur">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+            <Link href="/" className="flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg text-sm font-bold text-white"
+                    style={{ backgroundImage: "linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent-2)))" }}>
+                E
+              </span>
+              <span className="font-semibold tracking-tight">Exly Outbound</span>
+            </Link>
+            <nav className="flex flex-wrap gap-x-1 gap-y-1 text-sm">
               {NAV.map((n) => (
-                <Link key={n.href} href={n.href} className="text-muted hover:text-ink">
+                <Link
+                  key={n.href}
+                  href={n.href}
+                  className="rounded-md px-2.5 py-1 text-muted transition-colors hover:bg-bg hover:text-ink"
+                >
                   {n.label}
                 </Link>
               ))}
             </nav>
             <ThemeToggle />
-          </header>
-          <main className="py-6">{children}</main>
-        </div>
+          </div>
+        </header>
+        <main className="mx-auto max-w-7xl px-4 py-7">{children}</main>
       </body>
     </html>
   );

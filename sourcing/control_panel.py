@@ -25,12 +25,59 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import queue
 import sys
+import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List
+from urllib.parse import parse_qs, urlparse
 
 logger = logging.getLogger("sourcing.control_panel")
+
+
+class _StreamTee:
+    """A writable that forwards to the original stream AND pushes complete lines
+    onto a queue, so the scraper's ``print(..., file=sys.stderr)`` progress is
+    mirrored live to the browser while still showing in the terminal."""
+
+    def __init__(self, original, q: "queue.Queue") -> None:
+        self._orig = original
+        self._q = q
+        self._buf = ""
+
+    def write(self, s: str) -> int:
+        try:
+            self._orig.write(s)
+        except Exception:
+            pass
+        self._buf += s
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            line = line.rstrip()
+            if line:
+                self._q.put(("log", line))
+        return len(s)
+
+    def flush(self) -> None:
+        try:
+            self._orig.flush()
+        except Exception:
+            pass
+
+
+class _QueueLogHandler(logging.Handler):
+    """Logging handler that pushes formatted records onto the SSE queue."""
+
+    def __init__(self, q: "queue.Queue") -> None:
+        super().__init__()
+        self._q = q
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self._q.put(("log", self.format(record)))
+        except Exception:
+            pass
 
 
 def _run_harvest(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -127,6 +174,10 @@ INDEX_HTML = r"""<!doctype html>
   @keyframes spin { to { transform:rotate(360deg); } }
   .tag-meta{background:#1f3a5f;color:#9ec5ff}.tag-instagram{background:#5f1f4f;color:#ff9ed6}
   .tag-linkedin{background:#1f3a5f;color:#9ecbff}.tag-youtube{background:#5f1f1f;color:#ff9e9e}
+  .tag-websearch{background:#3a2f5f;color:#c4b5ff}.tag-web{background:#2f3a4f;color:#b5c9ff}
+  .log { margin:0; max-height:340px; overflow:auto; background:#070a11; border:1px solid var(--line);
+         border-radius:8px; padding:12px 14px; font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;
+         color:#b8c7dd; white-space:pre-wrap; word-break:break-word; }
 </style>
 </head>
 <body>
@@ -153,6 +204,7 @@ INDEX_HTML = r"""<!doctype html>
         <label class="src"><input type="checkbox" value="instagram" checked> Instagram</label>
         <label class="src"><input type="checkbox" value="linkedin" checked> LinkedIn</label>
         <label class="src"><input type="checkbox" value="youtube" checked> YouTube</label>
+        <label class="src"><input type="checkbox" value="websearch" checked> Web Search (free)</label>
       </div>
     </div>
     <div style="margin-top:14px">
@@ -160,7 +212,7 @@ INDEX_HTML = r"""<!doctype html>
         <input type="checkbox" id="enrich" checked>
         Enrich missing email/phone via web search
         <span class="muted" style="margin-left:6px">(budget</span>
-        <input id="enrichBudget" type="number" min="0" max="200" value="25"
+        <input id="enrichBudget" type="number" min="0" max="500" value="60"
                style="width:60px;padding:2px 6px;margin:0 4px" />
         <span class="muted">lookups)</span>
       </label>
@@ -170,6 +222,14 @@ INDEX_HTML = r"""<!doctype html>
       <button id="csv" class="secondary" disabled>Export CSV</button>
       <span id="status" class="muted"></span>
     </div>
+  </div>
+
+  <div class="card" id="liveCard" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <strong>Live progress <span id="elapsed" class="muted" style="font-weight:400"></span></strong>
+      <span id="liveState" class="pill" style="background:#1f3a5f;color:#9ec5ff">running…</span>
+    </div>
+    <pre id="log" class="log"></pre>
   </div>
 
   <div class="card" id="summaryCard" style="display:none">
@@ -249,7 +309,30 @@ document.querySelectorAll("#results th").forEach(th => th.onclick = () => {
 });
 document.getElementById("filter").oninput = render;
 
-document.getElementById("run").onclick = async () => {
+let ES = null, T0 = 0, TIMER = null;
+function logLine(line) {
+  const el = document.getElementById("log");
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 30;
+  el.textContent += (el.textContent ? "\n" : "") + line;
+  // keep the panel light: cap to the last 400 lines
+  const lines = el.textContent.split("\n");
+  if (lines.length > 400) el.textContent = lines.slice(-400).join("\n");
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+function setLiveState(text, color, bg) {
+  const el = document.getElementById("liveState");
+  el.textContent = text; el.style.color = color; el.style.background = bg;
+}
+function startTimer() {
+  T0 = Date.now();
+  clearInterval(TIMER);
+  TIMER = setInterval(() => {
+    const s = Math.floor((Date.now() - T0) / 1000);
+    document.getElementById("elapsed").textContent = `· ${Math.floor(s/60)}m ${s%60}s`;
+  }, 500);
+}
+
+document.getElementById("run").onclick = () => {
   const keywords = document.getElementById("keywords").value.split(",").map(s=>s.trim()).filter(Boolean);
   const sources = [...document.querySelectorAll(".sources input:checked")].map(i=>i.value);
   const budget = parseInt(document.getElementById("budget").value) || 5;
@@ -257,23 +340,45 @@ document.getElementById("run").onclick = async () => {
   const enrichBudget = parseInt(document.getElementById("enrichBudget").value) || 0;
   if (!keywords.length) { setStatus("Enter at least one keyword.", true); return; }
   if (!sources.length) { setStatus("Pick at least one source.", true); return; }
+  if (ES) ES.close();
+
   setBusy(true);
   setStatus('<span class="spinner"></span> Harvesting from ' + sources.join(", ") + ' …');
-  try {
-    const res = await fetch("/api/harvest", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ keywords, sources, search_budget: budget, enrich, enrich_budget: enrichBudget })
-    });
-    const data = await res.json();
-    if (data.error) { setStatus(data.error, true); setBusy(false); return; }
+  document.getElementById("log").textContent = "";
+  document.getElementById("liveCard").style.display = "block";
+  setLiveState("running…", "#9ec5ff", "#1f3a5f");
+  startTimer();
+
+  const params = new URLSearchParams({
+    keywords: keywords.join(","), sources: sources.join(","),
+    search_budget: String(budget), enrich: enrich ? "1" : "0",
+    enrich_budget: String(enrichBudget),
+  });
+  ES = new EventSource("/api/harvest/stream?" + params.toString());
+
+  ES.addEventListener("log", (e) => { logLine(JSON.parse(e.data).line); });
+
+  ES.addEventListener("done", (e) => {
+    const data = JSON.parse(e.data);
+    ES.close(); ES = null; clearInterval(TIMER); setBusy(false);
+    if (data.error) { setStatus(data.error, true); setLiveState("error", "#ffb3b3", "#5f1f1f"); return; }
     ROWS = (data.candidates || []).map(flatten);
     showSummary(data);
     document.getElementById("resultsCard").style.display = ROWS.length ? "block" : "none";
     render();
     document.getElementById("csv").disabled = !ROWS.length;
     setStatus(`Done — ${data.total} lead(s).`);
-  } catch (e) { setStatus("Request failed: " + e.message, true); }
-  setBusy(false);
+    setLiveState(`done · ${data.total} leads`, "#a7f0c0", "#13402a");
+    logLine(`✓ Finished — ${data.total} lead(s).`);
+  });
+
+  ES.addEventListener("error", (e) => {
+    let msg = "stream error";
+    try { if (e.data) msg = JSON.parse(e.data).error; } catch {}
+    if (ES) { ES.close(); ES = null; }
+    clearInterval(TIMER); setBusy(false);
+    setStatus(msg, true); setLiveState("error", "#ffb3b3", "#5f1f1f");
+  });
 };
 function showSummary(d) {
   const s = d.summary || {}, st = d.status || {};
@@ -310,10 +415,82 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path in ("/", "/index.html"):
+        parsed = urlparse(self.path)
+        if parsed.path in ("/", "/index.html"):
             self._send(200, INDEX_HTML.encode("utf-8"), "text/html; charset=utf-8")
+        elif parsed.path == "/api/harvest/stream":
+            self._handle_stream(parse_qs(parsed.query))
         else:
             self._send(404, b"not found", "text/plain")
+
+    def _sse(self, event: str, data: Any) -> None:
+        msg = "event: {0}\ndata: {1}\n\n".format(event, json.dumps(data, default=str))
+        self.wfile.write(msg.encode("utf-8"))
+        self.wfile.flush()
+
+    def _handle_stream(self, qs: Dict[str, List[str]]) -> None:
+        """Run a harvest and stream live progress to the browser via SSE.
+
+        Captures both the scraper's stderr prints and Python logging, forwards
+        each line as an ``event: log``, then sends the final ``event: done`` with
+        the full results (or ``event: error``).
+        """
+        def first(key: str, default: str = "") -> str:
+            vals = qs.get(key)
+            return vals[0] if vals else default
+
+        payload = {
+            "keywords": [s.strip() for s in first("keywords").split(",") if s.strip()],
+            "sources": [s for s in first("sources").split(",") if s],
+            "search_budget": first("search_budget", "5"),
+            "enrich": first("enrich", "1") in ("1", "true", "True"),
+            "enrich_budget": first("enrich_budget", "0"),
+        }
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+        q: "queue.Queue" = queue.Queue()
+        log_handler = _QueueLogHandler(q)
+        log_handler.setFormatter(logging.Formatter("%(message)s"))
+        root = logging.getLogger()
+        root.addHandler(log_handler)
+        orig_stderr = sys.stderr
+        sys.stderr = _StreamTee(orig_stderr, q)  # capture scraper prints
+
+        box: Dict[str, Any] = {}
+
+        def work() -> None:
+            try:
+                box["result"] = _run_harvest(payload)
+                q.put(("done", None))
+            except Exception as exc:  # surface any failure to the UI
+                box["error"] = "{0}: {1}".format(type(exc).__name__, exc)
+                q.put(("error", None))
+
+        threading.Thread(target=work, daemon=True).start()
+
+        try:
+            self._sse("log", {"line": "▸ Starting harvest: {0}".format(
+                ", ".join(payload["sources"]) or "all")})
+            while True:
+                kind, msg = q.get()
+                if kind == "log":
+                    self._sse("log", {"line": msg})
+                elif kind == "done":
+                    self._sse("done", box.get("result", {}))
+                    break
+                elif kind == "error":
+                    self._sse("error", {"error": box.get("error", "unknown error")})
+                    break
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # browser navigated away mid-stream
+        finally:
+            sys.stderr = orig_stderr
+            root.removeHandler(log_handler)
 
     def do_POST(self) -> None:  # noqa: N802
         if self.path != "/api/harvest":

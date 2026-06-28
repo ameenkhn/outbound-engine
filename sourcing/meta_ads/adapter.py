@@ -65,8 +65,8 @@ def _default_scraper_runner(keywords: List[str]) -> str:  # pragma: no cover - n
             try:
                 res = await scraper.scrape_ads(
                     query=q, country="IN", active_status="active",
-                    ad_type="all", media_type="all", max_scrolls=35,
-                    scrape_advertiser_details=True, max_ads_to_detail=25,
+                    ad_type="all", media_type="all", max_scrolls=50,
+                    scrape_advertiser_details=True, max_ads_to_detail=100,
                     filter_by_keywords=True, min_keyword_matches=1,
                 )
             except Exception as exc:

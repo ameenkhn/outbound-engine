@@ -21,6 +21,11 @@ facebook_page_debug.html
 *_leads*.csv
 *_contacts*.csv
 *_FINAL.*
+# Exported lead lists (scraped PII — never commit, under any name)
+leads*.csv
+leads*.json
+*-leads*.csv
+/*.csv
 
 # ---- Secrets / config (API keys for WhatsApp BSP, ESP, LLMs, DB) ----
 .env
