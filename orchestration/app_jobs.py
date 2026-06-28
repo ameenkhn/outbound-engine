@@ -119,19 +119,19 @@ def _persist_spec_attributes(conn, spec_id: int, attributes: dict) -> None:
 
 
 def _do_source_run(conn, payload: dict) -> dict:
-    """Run one (or all) source adapters for an approved spec and load the leads.
+    """Run one (or all) source adapters and load the resulting leads.
 
-    payload:
-      * ``spec_id``  — the approved target_spec to source (required).
+    payload (two modes):
+      * ``spec_id``  — source an existing APPROVED target_spec (brain-driven flow), OR
+      * ``keywords`` — a list of keywords to harvest directly (no LLM / no spec row;
+                       the website's "Quick Harvest" uses this). An ad-hoc approved
+                       in-memory spec is built from the keywords.
       * ``platform`` — "meta_ads" | "instagram" | "linkedin" | "youtube" | "all"
                        (default "all" — the full fan-out).
 
-    Importing ``sourcing.harvest_all`` registers every adapter and gives us both
-    the unified runner and the registry. Each adapter yields loader-ready
-    candidate dicts; we resolve them through ``data.loader.load_candidates``
-    (same false-merge-guarded path as Meta/YouTube), stamping ``target_spec_id``.
-    Any resume cursor / per-source status the adapters wrote onto the spec is
-    persisted back to ``target_specs.attributes`` so a later run continues.
+    Each adapter yields loader-ready candidate dicts resolved through
+    ``data.loader.load_candidates`` (the same false-merge-guarded, dedup path),
+    so re-runs never duplicate. Resume cursors are persisted back for spec_id runs.
     """
     from sourcing.harvest_all import harvest_all, ALL_SOURCES
     from sourcing.base import is_registered
@@ -139,14 +139,24 @@ def _do_source_run(conn, payload: dict) -> dict:
     from data.loader import load_candidates
     from data.known import make_skip_predicate
 
-    spec_id = int(payload["spec_id"])
+    spec_id = payload.get("spec_id")
+    keywords = [k.strip() for k in (payload.get("keywords") or []) if k and str(k).strip()]
     platform = (payload.get("platform") or "all").strip()
 
-    spec = load_spec(conn, spec_id)
-    if spec is None:
-        raise ValueError(f"no target_spec id={spec_id}")
-    if not spec.approved:
-        raise ValueError(f"target_spec id={spec_id} is not approved — refusing to source")
+    # Resolve the spec: an existing approved row, OR an ad-hoc one from keywords.
+    if spec_id is not None:
+        spec = load_spec(conn, int(spec_id))
+        if spec is None:
+            raise ValueError(f"no target_spec id={spec_id}")
+        if not spec.approved:
+            raise ValueError(f"target_spec id={spec_id} is not approved — refusing to source")
+        target_spec_id = spec.id
+    elif keywords:
+        # Ad-hoc, in-memory, APPROVED spec — no LLM, no DB spec row needed.
+        spec = {"id": None, "approved": True, "expanded_keywords": keywords, "attributes": {}}
+        target_spec_id = None
+    else:
+        raise ValueError("source_run requires either 'spec_id' or 'keywords'")
 
     if platform == "all":
         sources = list(ALL_SOURCES)
@@ -163,13 +173,15 @@ def _do_source_run(conn, payload: dict) -> dict:
     candidates, per_source = harvest_all(spec, sources=sources, skip_known=skip_known)
 
     # Resolve/dedupe into leads (reuses this job's connection + transaction).
-    stats = load_candidates(candidates, conn=conn, target_spec_id=spec.id)
+    stats = load_candidates(candidates, conn=conn, target_spec_id=target_spec_id)
 
-    # Persist resume cursor + per-source status the adapters stamped on the spec.
-    _persist_spec_attributes(conn, spec_id, getattr(spec, "attributes", {}) or {})
+    # For spec-driven runs, persist resume cursor + per-source status back to the row.
+    if spec_id is not None:
+        _persist_spec_attributes(conn, int(spec_id), getattr(spec, "attributes", {}) or {})
 
     return {
         "spec_id": spec_id,
+        "keywords": keywords or None,
         "sources": sources,
         "per_source": per_source,
         "candidates": stats.get("candidates", 0),

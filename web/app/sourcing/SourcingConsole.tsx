@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { TargetSpec, AppJob } from "@/lib/types";
-import { runModeB, runModeA, approveSpec, kickSourceRun } from "./actions";
+import { runModeB, runModeA, approveSpec, kickSourceRun, kickQuickHarvest } from "./actions";
 
 export function SourcingConsole({
   specs,
@@ -15,6 +15,8 @@ export function SourcingConsole({
 }) {
   const [seeds, setSeeds] = useState("");
   const [persona, setPersona] = useState("");
+  const [qhKeywords, setQhKeywords] = useState("");
+  const [qhPlatform, setQhPlatform] = useState<"all" | "meta_ads" | "instagram" | "linkedin" | "youtube" | "websearch">("all");
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -50,6 +52,43 @@ export function SourcingConsole({
           Turn intent into source queries. Mode B expands keywords and auto-approves; Mode A
           builds a persona spec you sign off. Adapters only source from <b>approved</b> specs.
         </p>
+      </div>
+
+      {/* Quick Harvest — scrape straight from keywords, no LLM. The worker runs it. */}
+      <div className="card border-accent/40">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">⚡ Quick Harvest — scrape now from keywords</h2>
+          <span className="pill bg-indigo-100 text-indigo-700">no sign-off needed</span>
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          Type a niche, pick sources, and the engine harvests leads straight into your database.
+          Requires the worker to be running (Railway / your machine).
+        </p>
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <input
+            className="input flex-1"
+            style={{ minWidth: 220 }}
+            placeholder="e.g. fitness coach, yoga teacher"
+            value={qhKeywords}
+            onChange={(e) => setQhKeywords(e.target.value)}
+          />
+          <select className="input" style={{ maxWidth: 180 }} value={qhPlatform}
+            onChange={(e) => setQhPlatform(e.target.value as typeof qhPlatform)}>
+            <option value="all">All sources</option>
+            <option value="meta_ads">Meta Ad Library</option>
+            <option value="instagram">Instagram</option>
+            <option value="linkedin">LinkedIn</option>
+            <option value="youtube">YouTube</option>
+            <option value="websearch">Web Search</option>
+          </select>
+          <button
+            className="btn"
+            disabled={pending}
+            onClick={() => run(() => kickQuickHarvest(qhKeywords.split(","), qhPlatform), "Harvest queued — leads will appear in Leads shortly")}
+          >
+            Harvest now
+          </button>
+        </div>
       </div>
 
       {/* the two brain modes */}

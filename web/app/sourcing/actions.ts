@@ -44,12 +44,27 @@ export type SourcePlatform =
   | "instagram"
   | "linkedin"
   | "youtube"
+  | "websearch"
   | "all";
 
 /** Kick a source adapter run for an approved spec (engine runs the scraper/API).
  *  "all" fans out across every channel in one job. */
 export async function kickSourceRun(specId: number, platform: SourcePlatform): Promise<Res> {
   const res = await enqueueJob("source_run", { spec_id: specId, platform });
+  if ("error" in res) return { ok: false, error: res.error };
+  revalidatePath("/sourcing");
+  return { ok: true, jobId: res.id };
+}
+
+/** Quick Harvest: scrape straight from typed keywords — no Mode B / LLM needed.
+ *  Enqueues a source_run the worker runs with an ad-hoc approved spec. */
+export async function kickQuickHarvest(
+  keywords: string[],
+  platform: SourcePlatform,
+): Promise<Res> {
+  const clean = keywords.map((k) => k.trim()).filter(Boolean);
+  if (clean.length === 0) return { ok: false, error: "Enter at least one keyword." };
+  const res = await enqueueJob("source_run", { keywords: clean, platform });
   if ("error" in res) return { ok: false, error: res.error };
   revalidatePath("/sourcing");
   return { ok: true, jobId: res.id };

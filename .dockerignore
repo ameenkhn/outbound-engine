@@ -1,0 +1,22 @@
+# Keep the worker image small + fast: exclude the web app and local cruft.
+web/
+node_modules/
+.next/
+.venv/
+venv/
+env/
+.git/
+.github/
+__pycache__/
+*.pyc
+scraper_results/
+*.log
+*.csv
+*.json.gz
+.DS_Store
+.idea/
+.vscode/
+# never bake secrets into the image — set them as env vars on the host
+.env
+.env.*
+!.env.example
