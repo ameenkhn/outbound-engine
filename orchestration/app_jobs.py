@@ -142,6 +142,10 @@ def _do_source_run(conn, payload: dict) -> dict:
     spec_id = payload.get("spec_id")
     keywords = [k.strip() for k in (payload.get("keywords") or []) if k and str(k).strip()]
     platform = (payload.get("platform") or "all").strip()
+    try:
+        limit = int(payload.get("limit") or 0)
+    except (TypeError, ValueError):
+        limit = 0
 
     # Resolve the spec: an existing approved row, OR an ad-hoc one from keywords.
     if spec_id is not None:
@@ -171,6 +175,10 @@ def _do_source_run(conn, payload: dict) -> dict:
     # the billed per-profile fetch (dedupe at save still backstops correctness).
     skip_known = make_skip_predicate(conn)
     candidates, per_source = harvest_all(spec, sources=sources, skip_known=skip_known)
+
+    # Cap to the requested number of leads, if any ("Max leads" in the UI).
+    if limit and limit > 0 and len(candidates) > limit:
+        candidates = candidates[:limit]
 
     # Resolve/dedupe into leads (reuses this job's connection + transaction).
     stats = load_candidates(candidates, conn=conn, target_spec_id=target_spec_id)

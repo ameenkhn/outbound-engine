@@ -61,11 +61,39 @@ export async function kickSourceRun(specId: number, platform: SourcePlatform): P
 export async function kickQuickHarvest(
   keywords: string[],
   platform: SourcePlatform,
+  limit = 0,
 ): Promise<Res> {
   const clean = keywords.map((k) => k.trim()).filter(Boolean);
   if (clean.length === 0) return { ok: false, error: "Enter at least one keyword." };
-  const res = await enqueueJob("source_run", { keywords: clean, platform });
+  const payload: Record<string, unknown> = { keywords: clean, platform };
+  if (limit && limit > 0) payload.limit = limit;
+  const res = await enqueueJob("source_run", payload);
   if ("error" in res) return { ok: false, error: res.error };
   revalidatePath("/sourcing");
   return { ok: true, jobId: res.id };
+}
+
+export type JobSnapshot = {
+  id: number;
+  status: "pending" | "claimed" | "done" | "failed";
+  result: Record<string, unknown> | null;
+  last_error: string | null;
+};
+
+/** Poll a single job's live status (used by Quick Harvest to show progress). */
+export async function getJobStatus(
+  jobId: number,
+): Promise<{ ok: true; job: JobSnapshot } | { ok: false; error: string }> {
+  try {
+    const supa = getServerClient();
+    const { data, error } = await supa
+      .from("app_jobs")
+      .select("id,status,result,last_error")
+      .eq("id", jobId)
+      .single();
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, job: data as unknown as JobSnapshot };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }

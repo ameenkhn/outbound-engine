@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import type { TargetSpec, AppJob } from "@/lib/types";
-import { runModeB, runModeA, approveSpec, kickSourceRun, kickQuickHarvest } from "./actions";
+import {
+  runModeB, runModeA, approveSpec, kickSourceRun, kickQuickHarvest,
+  getJobStatus, type JobSnapshot,
+} from "./actions";
 
 export function SourcingConsole({
   specs,
@@ -17,8 +20,31 @@ export function SourcingConsole({
   const [persona, setPersona] = useState("");
   const [qhKeywords, setQhKeywords] = useState("");
   const [qhPlatform, setQhPlatform] = useState<"all" | "meta_ads" | "instagram" | "linkedin" | "youtube" | "websearch">("all");
+  const [qhLimit, setQhLimit] = useState("100");
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [liveJob, setLiveJob] = useState<JobSnapshot | null>(null);
+
+  // Live status: while a Quick Harvest job is pending/claimed, poll it every 2s
+  // so the user sees Queued → Running → Done with the per-source counts.
+  useEffect(() => {
+    if (!liveJob || liveJob.status === "done" || liveJob.status === "failed") return;
+    const t = setInterval(async () => {
+      const r = await getJobStatus(liveJob.id);
+      if (r.ok) setLiveJob(r.job);
+    }, 2000);
+    return () => clearInterval(t);
+  }, [liveJob]);
+
+  function quickHarvest() {
+    setMsg(null);
+    setLiveJob(null);
+    startTransition(async () => {
+      const r = await kickQuickHarvest(qhKeywords.split(","), qhPlatform, parseInt(qhLimit) || 0);
+      if (!r.ok) { setMsg("Error: " + r.error); return; }
+      setLiveJob({ id: r.jobId!, status: "pending", result: null, last_error: null });
+    });
+  }
 
   function run(fn: () => Promise<{ ok: boolean; jobId?: number; error?: string }>, okText: string) {
     setMsg(null);
@@ -55,40 +81,50 @@ export function SourcingConsole({
       </div>
 
       {/* Quick Harvest — scrape straight from keywords, no LLM. The worker runs it. */}
-      <div className="card border-accent/40">
+      <div className="card border-accent/30 rise"
+        style={{ background: "linear-gradient(180deg, rgb(var(--accent)/0.05), transparent 55%)" }}>
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">⚡ Quick Harvest — scrape now from keywords</h2>
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <span className="grad-text">⚡ Quick Harvest</span>
+            <span className="text-sm font-normal text-muted">— scrape now from keywords</span>
+          </h2>
           <span className="pill bg-indigo-100 text-indigo-700">no sign-off needed</span>
         </div>
-        <p className="mt-1 text-xs text-muted">
-          Type a niche, pick sources, and the engine harvests leads straight into your database.
-          Requires the worker to be running (Railway / your machine).
+        <p className="mt-1.5 text-xs text-muted">
+          Type a niche, choose your sources and how many leads you want, and the engine
+          harvests them straight into your database.
         </p>
-        <div className="mt-3 flex flex-wrap items-end gap-2">
-          <input
-            className="input flex-1"
-            style={{ minWidth: 220 }}
-            placeholder="e.g. fitness coach, yoga teacher"
-            value={qhKeywords}
-            onChange={(e) => setQhKeywords(e.target.value)}
-          />
-          <select className="input" style={{ maxWidth: 180 }} value={qhPlatform}
-            onChange={(e) => setQhPlatform(e.target.value as typeof qhPlatform)}>
-            <option value="all">All sources</option>
-            <option value="meta_ads">Meta Ad Library</option>
-            <option value="instagram">Instagram</option>
-            <option value="linkedin">LinkedIn</option>
-            <option value="youtube">YouTube</option>
-            <option value="websearch">Web Search</option>
-          </select>
-          <button
-            className="btn"
-            disabled={pending}
-            onClick={() => run(() => kickQuickHarvest(qhKeywords.split(","), qhPlatform), "Harvest queued — leads will appear in Leads shortly")}
-          >
-            Harvest now
-          </button>
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto]">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-muted">Niche / keywords</label>
+            <input className="input" placeholder="e.g. fitness coach, yoga teacher"
+              value={qhKeywords} onChange={(e) => setQhKeywords(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-muted">Sources</label>
+            <select className="input lg:w-44" value={qhPlatform}
+              onChange={(e) => setQhPlatform(e.target.value as typeof qhPlatform)}>
+              <option value="all">All sources</option>
+              <option value="meta_ads">Meta Ad Library</option>
+              <option value="instagram">Instagram</option>
+              <option value="linkedin">LinkedIn</option>
+              <option value="youtube">YouTube</option>
+              <option value="websearch">Web Search</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-muted">Max leads</label>
+            <input className="input lg:w-28" type="number" min={1} max={5000} step={10}
+              value={qhLimit} onChange={(e) => setQhLimit(e.target.value)} />
+          </div>
+          <div className="flex items-end">
+            <button className="btn h-[38px] w-full lg:w-auto" disabled={pending} onClick={quickHarvest}>
+              Harvest now
+            </button>
+          </div>
         </div>
+
+        {liveJob && <LiveHarvest job={liveJob} />}
       </div>
 
       {/* the two brain modes */}
@@ -246,4 +282,50 @@ function statusClass(s: string): string {
   if (s === "failed") return "bg-red-100 text-red-700";
   if (s === "claimed") return "bg-blue-100 text-blue-700";
   return "bg-slate-100 text-muted";
+}
+
+/** Live status panel for a Quick Harvest job: Queued → Running → Done + counts. */
+function LiveHarvest({ job }: { job: JobSnapshot }) {
+  const r = (job.result ?? {}) as Record<string, unknown>;
+  const per = (r.per_source ?? {}) as Record<string, number>;
+
+  const phase =
+    job.status === "pending" ? { label: "Queued — waiting for the worker…", cls: "bg-slate-100 text-muted", spin: true }
+    : job.status === "claimed" ? { label: "Scraping now…", cls: "bg-blue-100 text-blue-700", spin: true }
+    : job.status === "failed" ? { label: "Failed", cls: "bg-red-100 text-red-700", spin: false }
+    : { label: "Done", cls: "bg-green-100 text-green-700", spin: false };
+
+  return (
+    <div className="mt-3 rounded-lg border border-line bg-bg p-3 text-sm">
+      <div className="flex items-center gap-2">
+        {phase.spin && (
+          <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-line border-t-accent" />
+        )}
+        <span className={"pill " + phase.cls}>{phase.label}</span>
+        <span className="text-xs text-muted">job #{job.id}</span>
+      </div>
+
+      {job.status === "done" && (
+        <div className="mt-2">
+          <span className="font-semibold text-ink">
+            {(r.created as number) ?? 0} new · {(r.merged as number) ?? 0} updated
+          </span>
+          {Object.keys(per).length > 0 && (
+            <span className="ml-2 text-xs text-muted">
+              ({Object.entries(per).map(([k, v]) => `${k}: ${v}`).join(" · ")})
+            </span>
+          )}
+          <a href="/leads" className="ml-2 text-accent hover:underline">View leads →</a>
+        </div>
+      )}
+      {job.status === "failed" && job.last_error && (
+        <p className="mt-2 text-xs text-red-600">{job.last_error}</p>
+      )}
+      {(job.status === "pending" || job.status === "claimed") && (
+        <p className="mt-1.5 text-xs text-muted">
+          Watch the detailed line-by-line scrape in your Railway logs. This updates automatically.
+        </p>
+      )}
+    </div>
+  );
 }
