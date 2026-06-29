@@ -41,11 +41,10 @@ function NavItems({ pathname, onNav }: { pathname: string; onNav?: () => void })
 function Brand() {
   return (
     <Link href="/" className="flex items-center gap-2.5">
-      <span className="flex h-8 w-8 items-center justify-center rounded-xl text-sm font-bold text-white shadow-sm"
-        style={{ backgroundImage: "linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent-2)))" }}>
-        E
-      </span>
-      <span className="text-[15px] font-semibold tracking-tight">Exly Outbound</span>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/exly-logo.svg" alt="Exly" width={32} height={32}
+        className="h-8 w-8 rounded-xl shadow-sm" />
+      <span className="text-[15px] font-semibold tracking-tight">Outbound</span>
     </Link>
   );
 }
