@@ -36,7 +36,7 @@ logger = logging.getLogger("sourcing.meta_ads")
 ScraperRunner = Callable[[List[str]], str]
 
 
-def _default_scraper_runner(keywords: List[str]) -> str:  # pragma: no cover - needs live scraper
+def _default_scraper_runner(keywords: List[str], max_ads_to_detail: int = 100) -> str:  # pragma: no cover - needs live scraper
     """Real runner: drive the hardened scraper for ``keywords`` -> _full.json path.
 
     The hardened scraper is async and writes timestamped files into
@@ -66,7 +66,7 @@ def _default_scraper_runner(keywords: List[str]) -> str:  # pragma: no cover - n
                 res = await scraper.scrape_ads(
                     query=q, country="IN", active_status="active",
                     ad_type="all", media_type="all", max_scrolls=50,
-                    scrape_advertiser_details=True, max_ads_to_detail=100,
+                    scrape_advertiser_details=True, max_ads_to_detail=max_ads_to_detail,
                     filter_by_keywords=True, min_keyword_matches=1,
                 )
             except Exception as exc:
@@ -121,9 +121,16 @@ class MetaAdsAdapter(SourceAdapter):
             return
 
         # Reuse an existing scraper output if provided, else run the scraper.
+        # "Max leads" (spec.limit) caps how many advertiser pages get the slow
+        # deep-scrape, so a small target finishes fast instead of grinding all.
         path = self.scraper_output_path
         if path is None:
-            path = self.scraper_runner(keywords)
+            limit = _spec_limit(target_spec)
+            max_detail = limit if (limit and limit > 0) else 100
+            try:
+                path = self.scraper_runner(keywords, max_detail)
+            except TypeError:
+                path = self.scraper_runner(keywords)  # custom 1-arg runner
 
         # Bridge through the EXISTING loader's candidate builder. We yield
         # candidate dicts (not Candidate objects) so the orchestration layer can
@@ -167,6 +174,20 @@ def _spec_keywords(target_spec) -> List[str]:
     else:
         kws = []
     return [k for k in kws if k]
+
+
+def _spec_limit(target_spec) -> Optional[int]:
+    """Per-run "Max leads" cap, if the caller put one on the spec (Quick Harvest
+    passes a dict with ``limit``). Used to bound the slow deep-scrape."""
+    val = None
+    if isinstance(target_spec, dict):
+        val = target_spec.get("limit")
+    else:
+        val = getattr(target_spec, "limit", None)
+    try:
+        return int(val) if val else None
+    except (TypeError, ValueError):
+        return None
 
 
 # Register so the engine can discover this adapter by name / via enabled_adapters().

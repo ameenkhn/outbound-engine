@@ -157,7 +157,10 @@ def _do_source_run(conn, payload: dict) -> dict:
         target_spec_id = spec.id
     elif keywords:
         # Ad-hoc, in-memory, APPROVED spec — no LLM, no DB spec row needed.
-        spec = {"id": None, "approved": True, "expanded_keywords": keywords, "attributes": {}}
+        # ``limit`` rides on the spec so the Meta scraper can cap its slow
+        # deep-scrape to roughly the number of leads requested.
+        spec = {"id": None, "approved": True, "expanded_keywords": keywords,
+                "attributes": {}, "limit": limit or None}
         target_spec_id = None
     else:
         raise ValueError("source_run requires either 'spec_id' or 'keywords'")
@@ -174,14 +177,33 @@ def _do_source_run(conn, payload: dict) -> dict:
     # COST SAVER: load the handles we already have so adapters skip them before
     # the billed per-profile fetch (dedupe at save still backstops correctness).
     skip_known = make_skip_predicate(conn)
-    candidates, per_source = harvest_all(spec, sources=sources, skip_known=skip_known)
 
-    # Cap to the requested number of leads, if any ("Max leads" in the UI).
-    if limit and limit > 0 and len(candidates) > limit:
-        candidates = candidates[:limit]
+    # INCREMENTAL + FAST-FIRST: run one source at a time, fastest first (web
+    # search returns in seconds; the slow headless-browser Meta scrape goes
+    # last), and SAVE each source's leads as soon as it finishes. So leads start
+    # showing in /leads within seconds instead of only after the whole run.
+    FAST_FIRST = ["websearch", "youtube", "instagram", "linkedin", "meta_ads"]
+    ordered = [s for s in FAST_FIRST if s in sources] + [s for s in sources if s not in FAST_FIRST]
 
-    # Resolve/dedupe into leads (reuses this job's connection + transaction).
-    stats = load_candidates(candidates, conn=conn, target_spec_id=target_spec_id)
+    per_source: dict = {}
+    totals = {"candidates": 0, "created": 0, "merged": 0, "skipped": 0}
+    taken = 0
+    for src in ordered:
+        cands, per = harvest_all(spec, sources=[src], skip_known=skip_known)
+        if limit and limit > 0:
+            room = limit - taken
+            if room <= 0:
+                per_source[src] = 0
+                continue
+            if len(cands) > room:
+                cands = cands[:room]
+        taken += len(cands)
+        # Commit this source's leads now (reuses the job connection) so they
+        # appear in the CRM immediately, before the next source even starts.
+        stats = load_candidates(cands, conn=conn, target_spec_id=target_spec_id)
+        for k in totals:
+            totals[k] += stats.get(k, 0)
+        per_source[src] = per.get(src, len(cands))
 
     # For spec-driven runs, persist resume cursor + per-source status back to the row.
     if spec_id is not None:
@@ -190,12 +212,12 @@ def _do_source_run(conn, payload: dict) -> dict:
     return {
         "spec_id": spec_id,
         "keywords": keywords or None,
-        "sources": sources,
+        "sources": ordered,
         "per_source": per_source,
-        "candidates": stats.get("candidates", 0),
-        "created": stats.get("created", 0),
-        "merged": stats.get("merged", 0),
-        "skipped": stats.get("skipped", 0),
+        "candidates": totals["candidates"],
+        "created": totals["created"],
+        "merged": totals["merged"],
+        "skipped": totals["skipped"],
     }
 
 
