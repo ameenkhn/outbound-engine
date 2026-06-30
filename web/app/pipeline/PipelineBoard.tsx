@@ -18,6 +18,13 @@ export interface BoardLead {
   priority_rank: number | null;
   status: LeadStatus;
   source: string | null;
+  attributes?: Record<string, unknown> | null;
+}
+
+/** Prefer the creator's name; fall back to the identity key. */
+function leadName(l: BoardLead): string {
+  const a = (l.attributes ?? {}) as Record<string, unknown>;
+  return (a.advertiser as string) || l.identity_key;
 }
 
 type Band = "all" | "gate" | "low" | "mid" | "high";
@@ -125,7 +132,7 @@ export function PipelineBoard({ leads }: { leads: BoardLead[] }) {
                 <tr key={l.id}>
                   <td className="td tabular-nums">{l.priority_rank ?? "—"}</td>
                   <td className="td tabular-nums">{l.icp_score ?? "—"}</td>
-                  <td className="td font-mono text-xs"><Link href={`/leads/${l.id}`} className="text-accent hover:underline">{l.identity_key}</Link></td>
+                  <td className="td text-xs"><Link href={`/leads/${l.id}`} className="font-medium text-accent hover:underline">{leadName(l)}</Link></td>
                   <td className="td"><span className={"pill " + STAGE_CLASS[l.status]}>{STAGE_LABEL[l.status]}</span></td>
                   <td className="td">{l.segment ?? "—"}</td>
                   <td className="td">{l.niche ?? "—"}</td>
@@ -145,7 +152,7 @@ function Card({ lead, pending, act }: { lead: BoardLead; pending: boolean; act: 
   return (
     <div className="card p-3">
       <div className="flex items-start justify-between gap-2">
-        <Link href={`/leads/${lead.id}`} className="font-mono text-[11px] leading-tight text-accent hover:underline">{lead.identity_key}</Link>
+        <Link href={`/leads/${lead.id}`} className="text-sm font-medium leading-tight text-accent hover:underline">{leadName(lead)}</Link>
         <span className="pill bg-accent/10 text-accent tabular-nums">{lead.icp_score ?? "—"}</span>
       </div>
       <div className="mt-1 text-[11px] text-muted">
