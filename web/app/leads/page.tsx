@@ -132,41 +132,48 @@ export default async function LeadsPage({
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              <th className="th">Lead</th><th className="th">Contact</th><th className="th">Platform</th><th className="th">Segment</th>
-              <th className="th">Niche</th><th className="th">Followers</th><th className="th">Score</th>
-              <th className="th">Rank</th><th className="th">Status</th><th className="th">Source</th>
+              <th className="th">Name</th><th className="th">Email</th><th className="th">Phone</th>
+              <th className="th">Platform</th><th className="th">Category</th><th className="th">Audience</th>
+              <th className="th">Price</th><th className="th">Profile</th><th className="th">Notes</th>
+              <th className="th">Score</th><th className="th">Status</th>
             </tr>
           </thead>
           <tbody>
             {leads.map((l) => {
               const c = leadContact(l);
+              const a = (l.attributes ?? {}) as Record<string, unknown>;
+              const s = (k: string) => (a[k] ? String(a[k]) : "");
+              const name = s("advertiser") || l.identity_key;
+              const audience = s("audience_size") || (l.follower_count != null ? l.follower_count.toLocaleString() : "");
+              const profile = s("profile_url");
+              const notes = s("notes");
               return (
               <tr key={l.id}>
-                <td className="td font-mono text-xs">
-                  <Link href={`/leads/${l.id}`} className="text-accent hover:underline">{l.identity_key}</Link>
+                <td className="td">
+                  <Link href={`/leads/${l.id}`} className="font-medium text-accent hover:underline">{name}</Link>
                 </td>
                 <td className="td text-xs">
-                  {c.email ? <a href={`mailto:${c.email}`} className="text-accent hover:underline">{c.email}</a> : null}
-                  {c.email && c.phone ? <br /> : null}
-                  {c.phone ? <span className="text-muted">{c.phone}</span> : null}
-                  {!c.email && !c.phone ? <span className="text-muted">—</span> : null}
+                  {c.email ? <a href={`mailto:${c.email}`} className="text-accent hover:underline">{c.email}</a>
+                    : <span className="text-muted">—</span>}
                 </td>
+                <td className="td text-xs tabular-nums">{c.phone || <span className="text-muted">—</span>}</td>
                 <td className="td">{l.platform ?? "—"}</td>
-                <td className="td">{l.segment ?? "—"}</td>
-                <td className="td">{l.niche ?? "—"}</td>
-                <td className="td tabular-nums">
-                  {l.follower_count != null ? l.follower_count.toLocaleString() : "—"}
-                  {l.follower_band ? <span className="text-muted"> {l.follower_band}</span> : null}
+                <td className="td text-xs">{l.niche ?? "—"}</td>
+                <td className="td text-xs">{audience || <span className="text-muted">—</span>}</td>
+                <td className="td text-xs">{s("price") || <span className="text-muted">—</span>}</td>
+                <td className="td text-xs">
+                  {profile
+                    ? <a href={profile.startsWith("http") ? profile : "https://" + profile} target="_blank" rel="noreferrer" className="text-accent hover:underline">Open ↗</a>
+                    : <span className="text-muted">—</span>}
                 </td>
+                <td className="td max-w-[16rem] truncate text-xs text-muted" title={notes}>{notes || "—"}</td>
                 <td className="td tabular-nums font-semibold">{l.icp_score ?? "—"}</td>
-                <td className="td tabular-nums text-muted">{l.priority_rank ?? "—"}</td>
                 <td className="td"><span className={"pill " + STAGE_CLASS[l.status as LeadStatus]}>{STAGE_LABEL[l.status as LeadStatus]}</span></td>
-                <td className="td text-xs text-muted">{l.source ?? "—"}</td>
               </tr>
               );
             })}
             {leads.length === 0 && (
-              <tr><td className="td text-muted" colSpan={10}>No leads match these filters.</td></tr>
+              <tr><td className="td text-muted" colSpan={11}>No leads match these filters.</td></tr>
             )}
           </tbody>
         </table>
