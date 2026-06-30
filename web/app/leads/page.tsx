@@ -4,6 +4,7 @@ import type { Lead, LeadStatus } from "@/lib/types";
 import { ALL_STAGES, STAGE_LABEL, STAGE_CLASS } from "@/lib/stages";
 import { applyFilters, type LeadFilters } from "./filters";
 import { ExportButton } from "./ExportButton";
+import { ImportButton } from "./ImportButton";
 
 // Always read live (this is an ops console; freshness > cache here).
 export const dynamic = "force-dynamic";
@@ -49,7 +50,7 @@ export default async function LeadsPage({
   let query = supa
     .from("leads")
     .select(
-      "id,identity_key,segment,niche,platform,follower_band,follower_count,icp_score,priority_rank,status,source,created_at",
+      "id,identity_key,segment,niche,platform,follower_band,follower_count,icp_score,priority_rank,status,source,created_at,attributes",
       { count: "exact" },
     )
     .order("icp_score", { ascending: false, nullsFirst: false })
@@ -80,7 +81,10 @@ export default async function LeadsPage({
             {total.toLocaleString()} total · sorted by ICP score · page {page} of {pages}
           </p>
         </div>
-        <ExportButton filters={filters} />
+        <div className="flex gap-2">
+          <ImportButton />
+          <ExportButton filters={filters} />
+        </div>
       </div>
 
       {/* filter bar — plain GET form, no client JS, server-rendered results */}
@@ -128,16 +132,24 @@ export default async function LeadsPage({
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              <th className="th">Lead</th><th className="th">Platform</th><th className="th">Segment</th>
+              <th className="th">Lead</th><th className="th">Contact</th><th className="th">Platform</th><th className="th">Segment</th>
               <th className="th">Niche</th><th className="th">Followers</th><th className="th">Score</th>
               <th className="th">Rank</th><th className="th">Status</th><th className="th">Source</th>
             </tr>
           </thead>
           <tbody>
-            {leads.map((l) => (
+            {leads.map((l) => {
+              const c = leadContact(l);
+              return (
               <tr key={l.id}>
                 <td className="td font-mono text-xs">
                   <Link href={`/leads/${l.id}`} className="text-accent hover:underline">{l.identity_key}</Link>
+                </td>
+                <td className="td text-xs">
+                  {c.email ? <a href={`mailto:${c.email}`} className="text-accent hover:underline">{c.email}</a> : null}
+                  {c.email && c.phone ? <br /> : null}
+                  {c.phone ? <span className="text-muted">{c.phone}</span> : null}
+                  {!c.email && !c.phone ? <span className="text-muted">—</span> : null}
                 </td>
                 <td className="td">{l.platform ?? "—"}</td>
                 <td className="td">{l.segment ?? "—"}</td>
@@ -151,9 +163,10 @@ export default async function LeadsPage({
                 <td className="td"><span className={"pill " + STAGE_CLASS[l.status as LeadStatus]}>{STAGE_LABEL[l.status as LeadStatus]}</span></td>
                 <td className="td text-xs text-muted">{l.source ?? "—"}</td>
               </tr>
-            ))}
+              );
+            })}
             {leads.length === 0 && (
-              <tr><td className="td text-muted" colSpan={9}>No leads match these filters.</td></tr>
+              <tr><td className="td text-muted" colSpan={10}>No leads match these filters.</td></tr>
             )}
           </tbody>
         </table>
@@ -175,6 +188,18 @@ export default async function LeadsPage({
       </div>
     </div>
   );
+}
+
+/** Best email/phone to show in the list — from attributes (imported + enriched)
+ *  or parsed from the identity_key (e.g. "email:hi@x.in" / "phone:+91…"). */
+function leadContact(l: Lead): { email?: string; phone?: string } {
+  const a = (l.attributes ?? {}) as Record<string, unknown>;
+  let email = (a.email as string) || undefined;
+  let phone = (a.phone as string) || undefined;
+  const key = l.identity_key || "";
+  if (!email && key.startsWith("email:")) email = key.slice(6);
+  if (!phone && key.startsWith("phone:")) phone = key.slice(6);
+  return { email, phone };
 }
 
 function filtersToParams(f: LeadFilters): Record<string, string> {
