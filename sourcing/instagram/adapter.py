@@ -164,6 +164,92 @@ class HttpInstagramClient(InstagramClient):
         return out
 
 
+#: Instagram URL path prefixes that are NOT usernames (post/reel/chrome pages).
+_RESERVED_IG = {
+    "p", "reel", "reels", "explore", "tv", "stories", "accounts", "about",
+    "directory", "developer", "legal", "privacy", "terms", "help", "web", "s",
+}
+
+
+def _ig_handle_from_url(url: str) -> Optional[str]:
+    """Extract the @username from a public instagram.com result URL, or None."""
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(url if "://" in url else "http://" + url)
+    except ValueError:
+        return None
+    if "instagram.com" not in parts.netloc.lower():
+        return None
+    segs = [s for s in parts.path.split("/") if s]
+    if not segs:
+        return None
+    return segs[0].lstrip("@").lower()
+
+
+class PublicSearchInstagramClient(InstagramClient):
+    """Key-less Instagram discovery via public web search (DuckDuckGo).
+
+    Compliant by construction: it reads only public search-engine results —
+    no Instagram login, no private/Graph API, no scraping behind authentication.
+    Fidelity is lower than a paid provider (profile detail is mined from the
+    search title/snippet, not a full profile resource), but it makes Instagram
+    sourcing work TODAY with zero credentials. Set ``INSTAGRAM_API_BASE`` to a
+    provider for richer profiles.
+
+    It caches each page's results by username so :meth:`get_profiles` can build a
+    lightweight profile from the same search hit the username came from.
+    """
+
+    def __init__(self, timeout: float = 20.0) -> None:
+        from sourcing.websearch.adapter import DuckDuckGoSearchClient
+
+        self._ddg = DuckDuckGoSearchClient(timeout=timeout)
+        self._cache: Dict[str, Dict[str, Any]] = {}
+
+    def search_users(self, query: str, cursor: Optional[str] = None):
+        from sourcing.websearch.adapter import RateLimited as _WSRate
+
+        q = "site:instagram.com {0}".format(query)
+        try:
+            results, next_cursor = self._ddg.search(q, cursor=cursor)
+        except _WSRate:
+            raise RateLimited("search")
+        usernames: List[str] = []
+        for r in results:
+            u = _ig_handle_from_url(str(r.get("url") or ""))
+            if not u or u in _RESERVED_IG:
+                continue
+            self._cache.setdefault(u, r)
+            usernames.append(u)
+        return usernames, next_cursor
+
+    def get_profiles(self, usernames: List[str]) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        for u in usernames:
+            r = self._cache.get(u, {})
+            title = str(r.get("title") or "")
+            snippet = str(r.get("snippet") or "")
+            # IG titles look like "Full Name (@handle) • Instagram photos and videos".
+            full_name = title.split("(@")[0].split("•")[0].strip() or u
+            out.append({
+                "username": u,
+                "full_name": full_name,
+                "biography": snippet,
+                "business_email": _email_from_text(snippet),
+                "external_url": str(r.get("url") or ""),
+            })
+        return out
+
+
+def default_instagram_client() -> InstagramClient:
+    """Pick the Instagram backend: a configured paid provider if present, else
+    the key-less public web-search client (compliant, works out of the box)."""
+    if os.environ.get("INSTAGRAM_API_BASE"):
+        return HttpInstagramClient()
+    return PublicSearchInstagramClient()
+
+
 class FakeInstagramClient(InstagramClient):
     """Deterministic, offline client for tests.
 
@@ -342,8 +428,9 @@ class InstagramAdapter(SourceAdapter):
         client: Optional[InstagramClient] = None,
         search_budget: int = DEFAULT_SEARCH_BUDGET,
     ) -> None:
-        # Default to the real client; tests inject a FakeInstagramClient.
-        self.client = client or HttpInstagramClient()
+        # Paid provider if configured, else the key-less public-search client;
+        # tests inject a FakeInstagramClient.
+        self.client = client or default_instagram_client()
         self.search_budget = search_budget
         # Optional ``skip_known(handle) -> bool`` set by the orchestrator to skip
         # creators already in the DB *before* the costly profile fetch. Default

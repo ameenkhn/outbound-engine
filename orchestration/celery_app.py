@@ -28,6 +28,8 @@ REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 # back-pressure); these are sane stub defaults.
 DISPATCH_INTERVAL_SECONDS = float(os.environ.get("ORCH_DISPATCH_INTERVAL", "10"))
 SWEEP_INTERVAL_SECONDS = float(os.environ.get("ORCH_SWEEP_INTERVAL", "60"))
+# L8 always-on loop: how often to drop a fresh pipeline_cycle job (default daily).
+PIPELINE_INTERVAL_SECONDS = float(os.environ.get("ORCH_PIPELINE_INTERVAL", "86400"))
 
 
 class _CeleryUnavailable:
@@ -77,6 +79,12 @@ BEAT_SCHEDULE = {
     "dispatch-due-sends": {
         "task": "orchestration.tasks.dispatch_due_sends",
         "schedule": DISPATCH_INTERVAL_SECONDS,
+    },
+    # L8 always-on loop: periodically drop a fresh pipeline_cycle app_job (the
+    # app_jobs worker executes it: discover → score → personalize → gated send).
+    "pipeline-cycle": {
+        "task": "orchestration.tasks.run_pipeline_cycle",
+        "schedule": PIPELINE_INTERVAL_SECONDS,
     },
 }
 

@@ -3,7 +3,7 @@ import { getServerClient } from "@/lib/supabase/server";
 import type { Lead, ScoringConfig } from "@/lib/types";
 import { STAGE_LABEL, STAGE_CLASS } from "@/lib/stages";
 import { scoreBreakdown, type ChannelLite } from "@/lib/scoreBreakdown";
-import { NotesEditor, OptOutButton } from "./LeadActions";
+import { NotesEditor, OptOutButton, ReplyDrafter, BookDemoForm } from "./LeadActions";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +33,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
     );
   }
 
-  const [{ data: channels }, { data: events }, { data: messages }, { data: convs }, { data: supp }, { data: cfg }] =
+  const [{ data: channels }, { data: events }, { data: messages }, { data: convs }, { data: supp }, { data: cfg }, { data: sends }] =
     await Promise.all([
       supa.from("channels").select("type,handle,deliverable,opted_in,opted_out,opt_in_source,opt_in_ts").eq("lead_id", leadId),
       supa.from("events").select("type,intent,sentiment,meta,ts").eq("lead_id", leadId).order("ts", { ascending: false }).limit(50),
@@ -41,7 +41,10 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
       supa.from("conversions").select("demo_booked_at,demo_scheduled_at,status,owner,summary,outcome").eq("lead_id", leadId),
       supa.from("suppression").select("channel_type,reason,note,ts").eq("identity_key", lead.identity_key),
       supa.from("scoring_config").select("*").eq("id", 1).single(),
+      supa.from("outreach").select("channel,direction,to_handle,subject,body,status,error,created_at").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(50),
     ]);
+
+  const hasInbound = (sends ?? []).some((s) => (s as { direction?: string }).direction === "in");
 
   const chans = (channels ?? []) as ChannelLite[];
   const bd = scoreBreakdown(lead as unknown as Lead, chans, (cfg as ScoringConfig) ?? null);
@@ -65,6 +68,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           </div>
           <div className="flex items-center gap-2">
             <span className={"pill " + STAGE_CLASS[lead.status as keyof typeof STAGE_CLASS]}>{STAGE_LABEL[lead.status as keyof typeof STAGE_LABEL]}</span>
+            <Link href={`/compose?lead=${lead.id}`} className="btn px-3 py-1.5 text-sm">Message →</Link>
             <OptOutButton leadId={lead.id} identityKey={lead.identity_key} />
           </div>
         </div>
@@ -144,6 +148,47 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           ))}
         </div>
       )}
+
+      {/* two-way outreach thread (Compose sends + inbound replies) */}
+      <div className="card">
+        <h2 className="mb-2 text-sm font-semibold">Conversation ({(sends ?? []).length})</h2>
+        <div className="space-y-2">
+          {(sends ?? []).map((s, i) => {
+            const inbound = (s as { direction?: string }).direction === "in";
+            return (
+              <div key={i} className={"rounded border p-2 text-sm " + (inbound ? "border-accent/40 bg-accent/5 ml-6" : "border-line mr-6")}>
+                <div className="flex items-center justify-between text-xs text-muted">
+                  <span>
+                    <span className={"pill " + (inbound ? "bg-accent/15 text-accent" : "bg-slate-100 text-muted")}>{inbound ? "← reply" : "sent →"}</span>
+                    <span className={"ml-1 pill " + (s.channel === "whatsapp" ? "bg-green-100 text-green-700" : "bg-indigo-100 text-indigo-700")}>{s.channel}</span>
+                    {!inbound && <span className={"ml-1 pill " + (s.status === "replied" ? "bg-indigo-100 text-indigo-700" : s.status === "sent" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>{s.status}</span>}
+                  </span>
+                  <span>{fmt(s.created_at)}</span>
+                </div>
+                {s.subject && <div className="mt-1 font-medium">{s.subject}</div>}
+                <div className="text-muted line-clamp-4">{s.body}</div>
+                {s.error && <div className="mt-1 text-xs text-red-600">{s.error}</div>}
+              </div>
+            );
+          })}
+          {(sends ?? []).length === 0 && (
+            <p className="text-sm text-muted">Nothing yet. Use <Link href={`/compose?lead=${lead.id}`} className="text-accent hover:underline">Compose</Link> to reach out.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* AI suggested reply (L6) */}
+        <div className="card">
+          <h2 className="mb-2 text-sm font-semibold">Suggested reply</h2>
+          <ReplyDrafter leadId={lead.id} hasInbound={hasInbound} />
+        </div>
+        {/* demo booking (L7) */}
+        <div className="card">
+          <h2 className="mb-2 text-sm font-semibold">Book a demo</h2>
+          <BookDemoForm leadId={lead.id} />
+        </div>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* messages */}

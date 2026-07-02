@@ -160,6 +160,87 @@ class HttpLinkedInClient(LinkedInClient):
         return out
 
 
+def _li_slug_from_url(url: str) -> Optional[str]:
+    """Extract the /in/<slug> public-profile id from a linkedin.com URL, or None."""
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(url if "://" in url else "http://" + url)
+    except ValueError:
+        return None
+    if "linkedin.com" not in parts.netloc.lower():
+        return None
+    segs = [s for s in parts.path.split("/") if s]
+    if "in" in segs:
+        i = segs.index("in")
+        if i + 1 < len(segs):
+            return segs[i + 1].lower()
+    return None
+
+
+class PublicSearchLinkedInClient(LinkedInClient):
+    """Key-less LinkedIn discovery via public web search (DuckDuckGo).
+
+    Compliant by construction: it reads only public search-engine results — no
+    LinkedIn login, no private API, no automation against LinkedIn itself, and it
+    never sends anything (LinkedIn stays sourcing-only). Profile detail is mined
+    from the public search title/snippet; set ``LINKEDIN_API_BASE`` for a richer
+    provider. Caches page results by slug so :meth:`get_profiles` reuses the hit.
+    """
+
+    def __init__(self, timeout: float = 20.0) -> None:
+        from sourcing.websearch.adapter import DuckDuckGoSearchClient
+
+        self._ddg = DuckDuckGoSearchClient(timeout=timeout)
+        self._cache: Dict[str, Dict[str, Any]] = {}
+
+    def search_people(self, query: str, cursor: Optional[str] = None):
+        from sourcing.websearch.adapter import RateLimited as _WSRate
+
+        q = "site:linkedin.com/in {0}".format(query)
+        try:
+            results, next_cursor = self._ddg.search(q, cursor=cursor)
+        except _WSRate:
+            raise RateLimited("search")
+        slugs: List[str] = []
+        for r in results:
+            slug = _li_slug_from_url(str(r.get("url") or ""))
+            if not slug:
+                continue
+            self._cache.setdefault(slug, r)
+            slugs.append(slug)
+        return slugs, next_cursor
+
+    def get_profiles(self, slugs: List[str]) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        for slug in slugs:
+            r = self._cache.get(slug, {})
+            title = str(r.get("title") or "")
+            snippet = str(r.get("snippet") or "")
+            # LI titles look like "Full Name - Headline - Company | LinkedIn".
+            head = title.split("|")[0].strip()
+            bits = [b.strip() for b in head.split(" - ") if b.strip()]
+            full_name = bits[0] if bits else slug
+            headline = " - ".join(bits[1:]) if len(bits) > 1 else ""
+            out.append({
+                "public_id": slug,
+                "full_name": full_name,
+                "headline": headline,
+                "summary": snippet,
+                "email": _email_from_text(snippet),
+                "profile_url": str(r.get("url") or ""),
+            })
+        return out
+
+
+def default_linkedin_client() -> LinkedInClient:
+    """Pick the LinkedIn backend: a configured paid provider if present, else the
+    key-less public web-search client (compliant, sourcing-only, works today)."""
+    if os.environ.get("LINKEDIN_API_BASE"):
+        return HttpLinkedInClient()
+    return PublicSearchLinkedInClient()
+
+
 class FakeLinkedInClient(LinkedInClient):
     """Deterministic, offline client for tests.
 
@@ -341,8 +422,9 @@ class LinkedInAdapter(SourceAdapter):
         client: Optional[LinkedInClient] = None,
         search_budget: int = DEFAULT_SEARCH_BUDGET,
     ) -> None:
-        # Default to the real client; tests inject a FakeLinkedInClient.
-        self.client = client or HttpLinkedInClient()
+        # Paid provider if configured, else the key-less public-search client;
+        # tests inject a FakeLinkedInClient.
+        self.client = client or default_linkedin_client()
         self.search_budget = search_budget
         # Optional ``skip_known(handle) -> bool`` set by the orchestrator to skip
         # people already in the DB *before* the costly profile fetch.

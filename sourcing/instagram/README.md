@@ -1,6 +1,10 @@
 # Instagram Sourcing
 
-**Status:** ✅ Built — `adapter.py` implements the `SourceAdapter` contract.
+**Status:** ✅ Live — works today with **zero credentials** via a compliant
+public web-search default client (`PublicSearchInstagramClient`, DuckDuckGo
+`site:instagram.com`). Public search results only — no login, no private/Graph
+API, no scraping behind auth. Set `INSTAGRAM_API_BASE` / `INSTAGRAM_API_KEY` to
+switch to a richer paid provider. `adapter.py` implements the `SourceAdapter` contract.
 **PRD:** L1 / M1 — see [`../../PRD.md`](../../PRD.md).
 **Builds on:** sourcing layer (`sourcing/base.py`).
 

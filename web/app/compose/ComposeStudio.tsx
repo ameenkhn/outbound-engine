@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { generateCopy, sendMessage } from "./actions";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { generateCopy, sendMessage, sendCampaign, listSendableLeads, type SendableLead } from "./actions";
 
 type Channel = "whatsapp" | "email";
 type Mode = "template" | "ai";
@@ -24,8 +24,14 @@ function fill(text: string, name: string, niche: string): string {
     .replace(/\{\{\s*niche\s*\}\}/gi, niche || "your niche");
 }
 
-export function ComposeStudio() {
-  const [channel, setChannel] = useState<Channel>("whatsapp");
+export function ComposeStudio({
+  preselectLeadId,
+  preselectChannel,
+}: {
+  preselectLeadId?: number;
+  preselectChannel?: Channel;
+} = {}) {
+  const [channel, setChannel] = useState<Channel>(preselectChannel ?? "whatsapp");
   const [mode, setMode] = useState<Mode>("template");
   const [niche, setNiche] = useState("NLP coaching");
   const [sampleName, setSampleName] = useState("Maya");
@@ -37,16 +43,51 @@ export function ComposeStudio() {
   const [recipient, setRecipient] = useState("");
   const [sendState, setSendState] = useState<{ ok: boolean; text: string } | null>(null);
   const [sending, startSend] = useTransition();
+  const [audience, setAudience] = useState<"leads" | "test">("leads");
+  const [leads, setLeads] = useState<SendableLead[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [loadingLeads, startLoad] = useTransition();
+
+  function loadLeads(onlyId?: number) {
+    startLoad(async () => {
+      // when preselecting a lead, don't constrain by the niche box
+      const r = await listSendableLeads({ channel, niche: onlyId ? undefined : niche });
+      if (r.ok) {
+        setLeads(r.leads);
+        setSelected(new Set(onlyId ? r.leads.filter((l) => l.id === onlyId).map((l) => l.id) : r.leads.map((l) => l.id)));
+      } else setSendState({ ok: false, text: r.error });
+    });
+  }
+
+  // deep-link from a lead page: /compose?lead=123 → load & select just that lead
+  const preselected = useRef(false);
+  useEffect(() => {
+    if (preselectLeadId && !preselected.current) {
+      preselected.current = true;
+      setAudience("leads");
+      loadLeads(preselectLeadId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectLeadId]);
+
+  function toggle(id: number) {
+    setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
 
   function send() {
     setSendState(null);
     startSend(async () => {
-      const r = await sendMessage({
-        channel, to: recipient,
-        subject: fill(subject, sampleName, niche),
-        body: fill(body, sampleName, niche),
-      });
-      setSendState(r.ok ? { ok: true, text: "Sent! ✓" } : { ok: false, text: r.error });
+      if (audience === "test") {
+        const r = await sendMessage({ channel, to: recipient, subject: fill(subject, sampleName, niche), body: fill(body, sampleName, niche), firstName: sampleName });
+        setSendState(r.ok ? { ok: true, text: "Sent ✓" } : { ok: false, text: r.error });
+        return;
+      }
+      const ids = [...selected];
+      if (!ids.length) { setSendState({ ok: false, text: "Select at least one lead." }); return; }
+      const r = await sendCampaign({ leadIds: ids, channel, subject, body });
+      setSendState(r.ok
+        ? { ok: true, text: `Sent to ${r.sent} lead(s)${r.failed ? `, ${r.failed} failed` : ""} ✓` }
+        : { ok: false, text: r.error });
     });
   }
 
@@ -155,23 +196,58 @@ export function ComposeStudio() {
           </p>
         </div>
 
-        {/* send */}
-        <div className="card space-y-2">
-          <label className="block text-xs text-muted">
-            Send to ({channel === "whatsapp" ? "phone with country code" : "email"})
-          </label>
-          <div className="flex gap-2">
-            <input className="input" value={recipient} onChange={(e) => setRecipient(e.target.value)}
-              placeholder={channel === "whatsapp" ? "+919876543210" : "you@example.com"} />
-            <button className="btn shrink-0" disabled={sending} onClick={send}>
-              {sending ? "Sending…" : "Send →"}
-            </button>
+        {/* recipients + send */}
+        <div className="card space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Recipients &amp; send</h3>
+            <div className="inline-flex rounded-lg border border-line p-0.5 text-xs">
+              <button onClick={() => setAudience("leads")}
+                className={"rounded-md px-2.5 py-1 " + (audience === "leads" ? "bg-accent text-white" : "text-muted")}>My leads</button>
+              <button onClick={() => setAudience("test")}
+                className={"rounded-md px-2.5 py-1 " + (audience === "test" ? "bg-accent text-white" : "text-muted")}>Test to me</button>
+            </div>
           </div>
-          {sendState && (
-            <p className={"text-sm " + (sendState.ok ? "text-green-600" : "text-red-600")}>{sendState.text}</p>
+
+          {audience === "test" ? (
+            <div className="flex gap-2">
+              <input className="input" value={recipient} onChange={(e) => setRecipient(e.target.value)}
+                placeholder={channel === "whatsapp" ? "+919876543210" : "you@example.com"} />
+              <button className="btn shrink-0" disabled={sending} onClick={send}>{sending ? "Sending…" : "Send →"}</button>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-3">
+                <button className="btn-ghost text-xs" disabled={loadingLeads} onClick={() => loadLeads()}>
+                  {loadingLeads ? "Loading…" : `Load ${channel === "whatsapp" ? "WhatsApp" : "email"} leads` + (niche ? ` · ${niche}` : "")}
+                </button>
+                {leads.length > 0 && <span className="text-xs text-muted">{selected.size}/{leads.length} selected</span>}
+                {leads.length > 0 && (
+                  <button className="text-xs text-accent hover:underline"
+                    onClick={() => setSelected(selected.size === leads.length ? new Set() : new Set(leads.map((l) => l.id)))}>
+                    {selected.size === leads.length ? "Clear all" : "Select all"}
+                  </button>
+                )}
+              </div>
+              {leads.length > 0 && (
+                <div className="max-h-52 space-y-0.5 overflow-auto rounded-lg border border-line p-2">
+                  {leads.map((l) => (
+                    <label key={l.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-bg">
+                      <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggle(l.id)} />
+                      <span className="font-medium">{l.name}</span>
+                      <span className="text-muted">· {channel === "email" ? l.email : l.phone}</span>
+                      {l.niche && <span className="ml-auto truncate text-muted">{l.niche}</span>}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <button className="btn w-full" disabled={sending || selected.size === 0} onClick={send}>
+                {sending ? "Sending…" : `Send to ${selected.size} lead${selected.size === 1 ? "" : "s"} →`}
+              </button>
+            </>
           )}
+          {sendState && <p className={"text-sm " + (sendState.ok ? "text-green-600" : "text-red-600")}>{sendState.text}</p>}
           <p className="text-[11px] text-muted">
-            Sends via {channel === "whatsapp" ? "AiSensy" : "Resend"} — test with your own {channel === "whatsapp" ? "number" : "email"} first.
+            Sends via {channel === "whatsapp" ? "AiSensy" : "Resend"}, personalized per lead. Every send is logged in Outreach &amp; moves the lead to “contacted”.
           </p>
         </div>
       </div>

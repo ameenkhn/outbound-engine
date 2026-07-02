@@ -258,6 +258,43 @@ def dispatch_due_sends(conn=None, limit: int = 10, warmup_cap: Optional[int] = N
             conn.close()
 
 
+def run_pipeline_cycle(conn=None) -> dict:
+    """Beat task: drop one L8 ``pipeline_cycle`` job onto the app_jobs queue.
+
+    Reads its seed keywords / platform / send options from env so the schedule
+    needs no arguments:
+      * ``ORCH_PIPELINE_KEYWORDS`` — comma-separated (required to discover)
+      * ``ORCH_PIPELINE_PLATFORM``  — default "all"
+      * ``AUTOPILOT_SEND=1`` + ``ORCH_PIPELINE_SEND=1`` — opt into autopilot send
+    Enqueue-only (never runs the heavy pipeline inline), mirroring the cron path.
+    """
+    import os
+
+    own_conn = conn is None
+    if own_conn:
+        from data.db import connect
+
+        conn = connect()
+    try:
+        from orchestration.enqueue_cycle import enqueue_cycle
+
+        kws = [k.strip() for k in os.environ.get("ORCH_PIPELINE_KEYWORDS", "").split(",") if k.strip()]
+        if not kws:
+            return {"skipped": "ORCH_PIPELINE_KEYWORDS not set"}
+        payload = {
+            "keywords": kws,
+            "platform": os.environ.get("ORCH_PIPELINE_PLATFORM", "all"),
+            "send": os.environ.get("ORCH_PIPELINE_SEND") == "1",
+            "send_channel": os.environ.get("ORCH_PIPELINE_SEND_CHANNEL", "email"),
+            "send_cap": int(os.environ.get("ORCH_PIPELINE_SEND_CAP", "25")),
+        }
+        job_id = enqueue_cycle(conn, payload)
+        return {"enqueued_pipeline_cycle": job_id}
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def enqueue_due_work(conn=None) -> dict:
     """Beat task stub: turn due upstream work (messages that should be sent now)
     into pending ``send_jobs``. The real selection logic (which messages are due,
@@ -284,3 +321,7 @@ if celery_available():  # pragma: no cover - exercised only with celery present
     @app.task(name="orchestration.tasks.enqueue_due_work", bind=True)
     def _enqueue_due_work_task(self):
         return enqueue_due_work()
+
+    @app.task(name="orchestration.tasks.run_pipeline_cycle", bind=True)
+    def _run_pipeline_cycle_task(self):
+        return run_pipeline_cycle()

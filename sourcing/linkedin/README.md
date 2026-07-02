@@ -1,6 +1,11 @@
 # LinkedIn Sourcing
 
-**Status:** ✅ Built — `adapter.py` implements the `SourceAdapter` contract.
+**Status:** ✅ Live (sourcing-only) — works today with **zero credentials** via a
+compliant public web-search default client (`PublicSearchLinkedInClient`,
+DuckDuckGo `site:linkedin.com/in`). Public search results only — no login, no
+private API, no automation against LinkedIn, and it never sends anything. Set
+`LINKEDIN_API_BASE` / `LINKEDIN_API_KEY` for a richer paid provider. `adapter.py`
+implements the `SourceAdapter` contract.
 **PRD:** L1 / M1 — see [`../../PRD.md`](../../PRD.md).
 **Builds on:** sourcing layer (`sourcing/base.py`).
 

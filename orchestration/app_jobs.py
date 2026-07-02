@@ -221,12 +221,47 @@ def _do_source_run(conn, payload: dict) -> dict:
     }
 
 
+def _do_pipeline_cycle(conn, payload: dict) -> dict:
+    """L8 — run one always-on pipeline tick: discover → score → personalize →
+    (optionally) autopilot-send.
+
+    Sending is double-gated for policy safety: the payload must ask for it
+    (``send: true``) AND the environment must opt in (``AUTOPILOT_SEND=1``). With
+    either absent, the loop still fills + ranks + personalizes the pipeline and
+    leaves the copy queued for a human to send from Compose.
+    """
+    import os
+
+    from orchestration.pipeline import run_cycle
+
+    want_send = bool(payload.get("send"))
+    env_send = os.environ.get("AUTOPILOT_SEND") == "1"
+    send = want_send and env_send
+
+    result = run_cycle(
+        conn,
+        keywords=payload.get("keywords"),
+        spec_id=payload.get("spec_id"),
+        platform=(payload.get("platform") or "all"),
+        source_limit=int(payload.get("source_limit") or 50),
+        personalize_limit=int(payload.get("personalize_limit") or 50),
+        segment=(payload.get("segment") or "creator"),
+        send=send,
+        send_channel=(payload.get("send_channel") or "email"),
+        send_cap=int(payload.get("send_cap") or 25),
+    )
+    if want_send and not env_send:
+        result["send"] = {"skipped": "AUTOPILOT_SEND env not set to 1 — autosend blocked"}
+    return result
+
+
 HANDLERS = {
     "rescore": _do_rescore,
     "mode_b": _do_mode_b,
     "mode_a": _do_mode_a,
     "approve_spec": _do_approve_spec,
     "source_run": _do_source_run,
+    "pipeline_cycle": _do_pipeline_cycle,
 }
 
 
