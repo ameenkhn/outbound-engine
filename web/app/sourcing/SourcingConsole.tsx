@@ -284,16 +284,40 @@ function statusClass(s: string): string {
   return "bg-slate-100 text-muted";
 }
 
-/** Live status panel for a Quick Harvest job: Queued → Running → Done + counts. */
+function fmtDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  return `${m}m ${s % 60}s`;
+}
+
+/** Live status panel for a Quick Harvest job: Queued → Running (bar + ETA) → Done. */
 function LiveHarvest({ job }: { job: JobSnapshot }) {
   const r = (job.result ?? {}) as Record<string, unknown>;
   const per = (r.per_source ?? {}) as Record<string, number>;
+  const prog = (r.progress ?? null) as
+    | { total: number; done: number; current?: string | null; leads?: number; started_at?: string }
+    | null;
+
+  const running = job.status === "pending" || job.status === "claimed";
+  const total = prog?.total ?? 0;
+  const done = prog?.done ?? 0;
+  const pct = job.status === "done" ? 100 : total > 0 ? Math.round((done / total) * 100) : 0;
+
+  // ETA from elapsed / done · total (only once at least one source has finished).
+  let eta: string | null = null;
+  if (running && prog?.started_at && done > 0 && done < total) {
+    const elapsed = Date.now() - Date.parse(prog.started_at);
+    if (elapsed > 0) eta = fmtDuration((elapsed / done) * (total - done));
+  }
 
   const phase =
     job.status === "pending" ? { label: "Queued — waiting for the worker…", cls: "bg-slate-100 text-muted", spin: true }
     : job.status === "claimed" ? { label: "Scraping now…", cls: "bg-blue-100 text-blue-700", spin: true }
     : job.status === "failed" ? { label: "Failed", cls: "bg-red-100 text-red-700", spin: false }
     : { label: "Done", cls: "bg-green-100 text-green-700", spin: false };
+
+  const indeterminate = job.status === "pending" || (job.status === "claimed" && !prog);
 
   return (
     <div className="mt-3 rounded-lg border border-line bg-bg p-3 text-sm">
@@ -303,7 +327,31 @@ function LiveHarvest({ job }: { job: JobSnapshot }) {
         )}
         <span className={"pill " + phase.cls}>{phase.label}</span>
         <span className="text-xs text-muted">job #{job.id}</span>
+        {running && !indeterminate && <span className="ml-auto text-xs font-semibold tabular-nums text-ink">{pct}%</span>}
       </div>
+
+      {/* progress bar */}
+      {(running || job.status === "done") && (
+        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-line/60">
+          <div
+            className={"h-full rounded-full transition-all duration-500 " + (indeterminate ? "shimmer w-1/3" : "")}
+            style={indeterminate ? undefined : {
+              width: `${pct}%`,
+              backgroundImage: "linear-gradient(90deg, rgb(var(--accent)), rgb(var(--accent-2)))",
+            }}
+          />
+        </div>
+      )}
+
+      {/* running detail: source x/N + leads so far + ETA */}
+      {running && prog && (
+        <p className="mt-1.5 text-xs text-muted">
+          Source {Math.min(done + 1, total)} of {total}
+          {prog.current ? ` · ${prog.current}` : ""}
+          {typeof prog.leads === "number" ? ` · ${prog.leads} leads so far` : ""}
+          {eta ? ` · ~${eta} left` : done === 0 ? " · estimating…" : ""}
+        </p>
+      )}
 
       {job.status === "done" && (
         <div className="mt-2">
@@ -321,10 +369,8 @@ function LiveHarvest({ job }: { job: JobSnapshot }) {
       {job.status === "failed" && job.last_error && (
         <p className="mt-2 text-xs text-red-600">{job.last_error}</p>
       )}
-      {(job.status === "pending" || job.status === "claimed") && (
-        <p className="mt-1.5 text-xs text-muted">
-          Watch the detailed line-by-line scrape in your Railway logs. This updates automatically.
-        </p>
+      {indeterminate && (
+        <p className="mt-1.5 text-xs text-muted">Watch the line-by-line scrape in your Railway logs. Updates automatically.</p>
       )}
     </div>
   );

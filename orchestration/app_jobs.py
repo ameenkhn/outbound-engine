@@ -67,6 +67,23 @@ def _finish(conn, job_id: int, ok: bool, result: Any = None, error: str = None) 
     conn.commit()
 
 
+def _write_progress(conn, job_id: Optional[int], progress: dict) -> None:
+    """Publish live progress into ``app_jobs.result`` mid-run so the CRM can show a
+    determinate progress bar + ETA. Best-effort: never let a progress write break
+    the actual work. ``_finish`` overwrites ``result`` with the final summary."""
+    if job_id is None:
+        return
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE app_jobs SET result = %s WHERE id = %s",
+                (json.dumps({"progress": progress}), job_id),
+            )
+        conn.commit()
+    except Exception:
+        pass
+
+
 # ---- per-kind handlers ------------------------------------------------------
 
 def _do_rescore(conn, payload: dict) -> dict:
@@ -118,7 +135,7 @@ def _persist_spec_attributes(conn, spec_id: int, attributes: dict) -> None:
     conn.commit()
 
 
-def _do_source_run(conn, payload: dict) -> dict:
+def _do_source_run(conn, payload: dict, job_id: Optional[int] = None) -> dict:
     """Run one (or all) source adapters and load the resulting leads.
 
     payload (two modes):
@@ -185,15 +202,33 @@ def _do_source_run(conn, payload: dict) -> dict:
     FAST_FIRST = ["websearch", "youtube", "instagram", "linkedin", "meta_ads"]
     ordered = [s for s in FAST_FIRST if s in sources] + [s for s in sources if s not in FAST_FIRST]
 
+    from datetime import datetime, timezone
+
     per_source: dict = {}
     totals = {"candidates": 0, "created": 0, "merged": 0, "skipped": 0}
     taken = 0
-    for src in ordered:
+    total_sources = len(ordered)
+    started_at = datetime.now(timezone.utc).isoformat()
+
+    def _progress(done: int, current: Optional[str]):
+        _write_progress(conn, job_id, {
+            "phase": "sourcing",
+            "total": total_sources,
+            "done": done,
+            "current": current,
+            "order": ordered,
+            "leads": totals["created"] + totals["merged"],
+            "started_at": started_at,
+        })
+
+    _progress(0, ordered[0] if ordered else None)   # 0% — worker has started
+    for i, src in enumerate(ordered):
         cands, per = harvest_all(spec, sources=[src], skip_known=skip_known)
         if limit and limit > 0:
             room = limit - taken
             if room <= 0:
                 per_source[src] = 0
+                _progress(i + 1, ordered[i + 1] if i + 1 < total_sources else None)
                 continue
             if len(cands) > room:
                 cands = cands[:room]
@@ -204,6 +239,8 @@ def _do_source_run(conn, payload: dict) -> dict:
         for k in totals:
             totals[k] += stats.get(k, 0)
         per_source[src] = per.get(src, len(cands))
+        # Publish progress after each source finishes (drives the CRM bar + ETA).
+        _progress(i + 1, ordered[i + 1] if i + 1 < total_sources else None)
 
     # For spec-driven runs, persist resume cursor + per-source status back to the row.
     if spec_id is not None:
@@ -278,7 +315,10 @@ def run_once(conn) -> int:
             _finish(conn, job["id"], ok=False, error=f"unknown kind: {job['kind']}")
             continue
         try:
-            result = handler(conn, job["payload"])
+            import inspect
+            # Pass job_id only to handlers that opt in (source_run publishes live progress).
+            kwargs = {"job_id": job["id"]} if "job_id" in inspect.signature(handler).parameters else {}
+            result = handler(conn, job["payload"], **kwargs)
             _finish(conn, job["id"], ok=True, result=result)
         except Exception as e:  # noqa: BLE001 — record any handler failure for the UI
             _finish(conn, job["id"], ok=False, error=f"{type(e).__name__}: {e}")
