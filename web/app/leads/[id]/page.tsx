@@ -38,7 +38,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
       supa.from("channels").select("type,handle,deliverable,opted_in,opted_out,opt_in_source,opt_in_ts").eq("lead_id", leadId),
       supa.from("events").select("type,intent,sentiment,meta,ts").eq("lead_id", leadId).order("ts", { ascending: false }).limit(50),
       supa.from("messages").select("angle,subject,body,delivery_status,sent_at,created_at").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(50),
-      supa.from("conversions").select("demo_booked_at,demo_scheduled_at,status,owner,summary,outcome").eq("lead_id", leadId),
+      supa.from("conversions").select("demo_booked_at,demo_scheduled_at,status,owner,summary,outcome,meeting_url").eq("lead_id", leadId),
       supa.from("suppression").select("channel_type,reason,note,ts").eq("identity_key", lead.identity_key),
       supa.from("scoring_config").select("*").eq("id", 1).single(),
       supa.from("outreach").select("channel,direction,to_handle,subject,body,status,error,created_at").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(50),
@@ -144,6 +144,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             <p key={i} className="text-sm">
               {c.status ?? "booked"} · scheduled {fmt(c.demo_scheduled_at)} · booked {fmt(c.demo_booked_at)}
               {c.owner ? ` · owner ${c.owner}` : ""}{c.outcome ? ` · ${c.outcome}` : ""}
+              {c.meeting_url ? <> · <a href={c.meeting_url} target="_blank" rel="noreferrer" className="text-accent hover:underline">Join meeting ↗</a></> : null}
             </p>
           ))}
         </div>

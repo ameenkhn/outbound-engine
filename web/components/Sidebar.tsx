@@ -23,6 +23,7 @@ const NAV: Item[] = [
   { href: "/sourcing", label: "Sourcing", icon: I("M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3") },
   { href: "/scoring", label: "Scoring", icon: I("M12 2 15 9l7 .5-5.5 4.5L18 21l-6-3.7L6 21l1.5-7L2 9.5 9 9z") },
   { href: "/insights", label: "Insights", icon: I("M3 3v18h18M7 15l4-4 3 3 5-6") },
+  { href: "/kb", label: "Knowledge", icon: I("M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z") },
 ];
 
 function NavItems({ pathname, onNav }: { pathname: string; onNav?: () => void }) {

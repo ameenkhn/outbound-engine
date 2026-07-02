@@ -13,7 +13,9 @@ This repo is being built **layer by layer** (L0 → L10). Each layer is a folder
 
 ## ⭐ Where this repo is today (2026-07-02)
 
-**A working backend (L0–L8, partial) + a full CRM front end (`web/`) that now sources, scores, personalizes, and *sends* — WhatsApp + email — end to end.** Verified against live Supabase Postgres in **Mumbai (ap-south-1)**; the front end builds clean and deploys green on **Vercel**, with the scraper worker on **Railway**. See [HANDOFF.md](HANDOFF.md) to resume.
+**Feature-complete for an internal team: the full loop is built end to end (L0–L10).** Sources creators across five channels → dedupes → scores → AI-personalizes → sends WhatsApp + email → auto-handles inbound replies with a RAG chatbot → books demos with Google Calendar → tracks everything in the CRM → learns via insights, with an always-on orchestration loop. Verified against live Supabase Postgres in **Mumbai (ap-south-1)** (113 leads, migrations `0001`–`0007` applied); front end builds clean and deploys on **Vercel**; scraper/loop worker on **Railway**. **306 Python tests green + web build green.** To launch, follow the go-live checklist (env vars, provider setup, webhooks) — the code is done. See [HANDOFF.md](HANDOFF.md) to resume.
+
+> **Note:** this is an **internal-team tool** — single workspace, service-role DB access, no per-user auth yet. Multi-tenant auth + billing are the "productize into a startup" layer, intentionally not built.
 
 | Layer | Module | Status | What's there |
 |---|---|---|---|
@@ -23,8 +25,8 @@ This repo is being built **layer by layer** (L0 → L10). Each layer is a folder
 | **L3** Personalization | M4 | ✅ built | Value-prop library + P4 anti-mail-merge guardrail; **Claude Haiku** niche-aware copy for WhatsApp + email (channel-aware `default_generator()`) |
 | **L4** Dispatch | M5 | ✅ live | **WhatsApp via AiSensy** + **email via Resend** (HTTP adapters), plus Smartlead campaign push. Email warmup ramp built. Sends fire from the Compose studio and log to `outreach` |
 | **L5** Follow-ups | M6 | ✅ built | D0/D3/D7 cadence + stop rules |
-| **L6** Reply handling | M7 | 🟢 mostly | **Inbound webhooks** (`/api/webhooks/{resend,aisensy}`) auto-log replies, flip the lead to `replied`, and suppress on bounce/complaint/STOP. **AI suggested reply** (Claude Haiku, grounded in an Exly KB) drafts a response on the lead page. Full RAG over a large KB still lightweight |
-| **L7** Conversion / booking | M8 | 🟢 built | **Book-demo** action + form on lead-360 writes a `conversions` row, emits a `book` event, advances the lead to `demo_booked`. External calendar sync not wired |
+| **L6** Reply handling | M7 | ✅ built | **Inbound webhooks** (`/api/webhooks/{resend,aisensy}`) auto-log replies, flip the lead to `replied`, suppress on bounce/complaint/STOP. **RAG** over a `kb_docs` table (Postgres FTS + `kb_search`) grounds Claude Haiku for both the on-lead **suggested reply** and an optional **inbound auto-responder** (`AUTORESPOND=1`: emails auto-send, WhatsApp stored as ready drafts). KB editable in-app at `/kb` |
+| **L7** Conversion / booking | M8 | ✅ built | **Book-demo** form on lead-360 writes a `conversions` row, emits a `book` event, advances the lead to `demo_booked`, and (if Google env is set) creates a **Google Calendar event + Meet link** synced to the lead's email |
 | **L8** Orchestration | M9 | 🟢 built | Celery+Redis + Postgres durable queue **plus** the always-on loop: `orchestration.pipeline.run_cycle` chains discover→score→personalize→(gated) send as a `pipeline_cycle` job; schedule it via Railway Cron (`python -m orchestration.enqueue_cycle …`) or Celery beat. Autopilot send is double-gated (`send:true` + `AUTOPILOT_SEND=1`) with per-channel consent/suppression/dedupe |
 | **L9** Feedback loops | M10 | 🟢 built | **`/insights`** — reply-rate + conversion by niche/channel/source, with heuristic "suggested actions" (which niches to prioritise, which channel out-replies, which ICP weight to bump) |
 | **L10** Analytics & ops | M11 | 🟢 via CRM | `web/` dashboard + Outreach log + Insights give funnel / send / reply-rate / conversion views |
@@ -67,9 +69,9 @@ Outbound/
 ├── kb/                     RAG knowledge base (for L6)                  🔧
 │
 └── web/                    CRM front end — Next.js + Supabase           ✅
-    ├── app/{sourcing,scoring,dashboard,pipeline,leads,compose,outreach,insights}
-    │   L1·L2·dashboard·pipeline·lead-360·compose·outreach-log·insights
-    └── app/api/webhooks/{resend,aisensy}   L6 inbound reply/bounce handlers
+    ├── app/{sourcing,scoring,dashboard,pipeline,leads,compose,outreach,insights,kb}
+    │   L1·L2·dashboard·pipeline·lead-360·compose·outreach-log·insights·knowledge-base
+    └── app/api/webhooks/{resend,aisensy}   L6 inbound reply/bounce + RAG auto-responder
 ```
 
 ✅ built · 🟡 partial · ⬜ stub · 🔧 scaffold. Each layer folder has a `README.md` with its PRD layer + read/write contract.
@@ -145,6 +147,8 @@ The loop keeps going *after* the send:
 | `AISENSY_API_KEY` + `AISENSY_CAMPAIGN` | WhatsApp send (AiSensy campaign API) |
 | `RESEND_API_KEY` + `EMAIL_FROM` | Transactional email send (Resend) |
 | `INBOUND_WEBHOOK_SECRET` | _(optional)_ shared secret for the inbound webhook URLs |
+| `AUTORESPOND` | _(optional)_ `1` turns on the RAG auto-responder (email auto-sends; WhatsApp drafts) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` / `GOOGLE_CALENDAR_ID` | _(optional)_ Google Calendar sync for demo booking (Meet link) |
 
 Apply migrations [`0005_outreach.sql`](data/migrations/0005_outreach.sql) (send-log) and [`0006_inbound_booking.sql`](data/migrations/0006_inbound_booking.sql) (inbound direction + booking columns) on Supabase before using Compose / replies / booking.
 

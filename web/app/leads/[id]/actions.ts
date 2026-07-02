@@ -94,9 +94,34 @@ export async function draftReply(
 export async function bookDemo(
   leadId: number,
   input: { scheduledAt?: string; owner?: string; notes?: string },
-): Promise<Res> {
+): Promise<{ ok: true; meetingUrl?: string | null } | { ok: false; error: string }> {
   try {
     const supa = getServerClient();
+
+    // Best-effort Google Calendar sync (skipped silently if not configured).
+    let meetingUrl: string | null = null;
+    let calWarning: string | null = null;
+    try {
+      const { googleConfigured, createCalendarEvent } = await import("@/lib/google");
+      if (googleConfigured()) {
+        const { data: lead } = await supa
+          .from("leads").select("identity_key,attributes,channels(type,handle)").eq("id", leadId).single();
+        const a = ((lead?.attributes || {}) as Record<string, unknown>);
+        const name = (a.advertiser as string) || lead?.identity_key || `Lead ${leadId}`;
+        const chans = ((lead?.channels || []) as { type: string; handle: string }[]);
+        const email = chans.find((c) => c.type === "email")?.handle || null;
+        const startISO = input.scheduledAt ? new Date(input.scheduledAt).toISOString() : new Date(Date.now() + 864e5).toISOString();
+        const ev = await createCalendarEvent({
+          title: `Exly demo — ${name}`,
+          description: `Demo with ${name}.${input.notes ? ` Notes: ${input.notes}` : ""}`,
+          startISO, durationMin: 30, attendeeEmail: email,
+        });
+        meetingUrl = ev?.hangoutLink || ev?.htmlLink || null;
+      }
+    } catch (e) {
+      calWarning = (e as Error).message; // don't fail the booking on a calendar hiccup
+    }
+
     const { error: cErr } = await supa.from("conversions").insert({
       lead_id: leadId,
       demo_scheduled_at: input.scheduledAt ? new Date(input.scheduledAt).toISOString() : null,
@@ -104,13 +129,14 @@ export async function bookDemo(
       owner: input.owner || null,
       summary: input.notes || null,
       status: "booked",
+      meeting_url: meetingUrl,
     });
     if (cErr) return { ok: false, error: cErr.message };
     await supa.from("events").insert({ lead_id: leadId, type: "book", meta: { owner: input.owner || null } });
     const { error } = await supa.from("leads").update({ status: "demo_booked" }).eq("id", leadId);
     if (error) return { ok: false, error: error.message };
     revalidatePath(`/leads/${leadId}`);
-    return { ok: true };
+    return { ok: true, meetingUrl };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

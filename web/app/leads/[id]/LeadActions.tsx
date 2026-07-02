@@ -84,6 +84,7 @@ export function BookDemoForm({ leadId }: { leadId: number }) {
   const [owner, setOwner] = useState("");
   const [notes, setNotes] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  const [link, setLink] = useState<string | null>(null);
   const [pending, start] = useTransition();
   return (
     <div className="space-y-2">
@@ -101,14 +102,16 @@ export function BookDemoForm({ leadId }: { leadId: number }) {
         value={notes} onChange={(e) => setNotes(e.target.value)} />
       <div className="flex items-center gap-2">
         <button className="btn" disabled={pending}
-          onClick={() => { setMsg(null); start(async () => {
+          onClick={() => { setMsg(null); setLink(null); start(async () => {
             const r = await bookDemo(leadId, { scheduledAt: when || undefined, owner: owner || undefined, notes: notes || undefined });
-            if (r.ok) { setMsg("Demo booked ✓"); router.refresh(); } else setMsg(`Error: ${r.error}`);
+            if (r.ok) { setMsg(r.meetingUrl ? "Demo booked + calendar invite sent ✓" : "Demo booked ✓"); setLink(r.meetingUrl || null); router.refresh(); }
+            else setMsg(`Error: ${r.error}`);
           }); }}>
           {pending ? "Booking…" : "Book demo"}
         </button>
         {msg && <span className="text-xs text-muted">{msg}</span>}
       </div>
+      {link && <a href={link} target="_blank" rel="noreferrer" className="text-xs text-accent hover:underline">Open meeting link ↗</a>}
     </div>
   );
 }
