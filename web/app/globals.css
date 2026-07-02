@@ -122,9 +122,38 @@ tbody tr:hover { background: rgb(var(--accent) / .045); }
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 
-/* entrance */
-@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-.rise { animation: rise .4s cubic-bezier(.2,.7,.3,1) both; }
+/* entrance + motion */
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise .45s cubic-bezier(.2,.7,.3,1) both; }
+.rise-1 { animation: rise .45s cubic-bezier(.2,.7,.3,1) .06s both; }
+.rise-2 { animation: rise .45s cubic-bezier(.2,.7,.3,1) .12s both; }
+.rise-3 { animation: rise .45s cubic-bezier(.2,.7,.3,1) .18s both; }
+
+@keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.floaty { animation: floaty 6s ease-in-out infinite; }
+
+@keyframes fadein { from { opacity: 0 } to { opacity: 1 } }
+.fadein { animation: fadein .5s ease both; }
+
+/* moving highlight sheen across primary buttons on hover */
+.btn { position: relative; overflow: hidden; }
+.btn::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgb(255 255 255 / .28) 50%, transparent 70%);
+  transform: translateX(-120%); transition: transform .6s ease;
+}
+.btn:hover::after { transform: translateX(120%); }
+
+/* soft animated aurora blobs for hero sections */
+@keyframes drift { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(20px,-16px) scale(1.08); } }
+.aurora { position: absolute; border-radius: 9999px; filter: blur(48px); opacity: .5; animation: drift 12s ease-in-out infinite; pointer-events: none; }
+
+/* skeleton shimmer */
+@keyframes shimmer { 100% { background-position: 200% 0; } }
+.shimmer {
+  background: linear-gradient(90deg, rgb(var(--line)/.4) 25%, rgb(var(--line)/.7) 37%, rgb(var(--line)/.4) 63%);
+  background-size: 200% 100%; animation: shimmer 1.4s infinite;
+}
 
 /* soften light status-pill backgrounds in dark mode */
 .dark [class*="bg-slate-100"] { background-color: rgb(255 255 255 / .06); }

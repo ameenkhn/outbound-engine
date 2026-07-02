@@ -135,6 +135,70 @@ class SMTPTransport(Transport):
         return msg.get("Message-ID") or idempotency_key
 
 
+# ---- Resend HTTP transport (ESP API) ----------------------------------------
+
+class ResendTransport(Transport):
+    """Send via Resend's HTTP API — better deliverability, tracking, and no SMTP
+    server to run. Same :class:`Transport` interface, so the adapter and registry
+    are unchanged.
+
+    Config (env, with explicit-arg overrides for testing):
+      RESEND_API_KEY  (required)   — from the Resend dashboard
+      EMAIL_FROM      (required)   — verified sender on your sending domain
+      RESEND_BASE_URL (optional)   — defaults to https://api.resend.com/emails
+
+    The idempotency_key is passed as Resend's native ``Idempotency-Key`` header,
+    so a reclaimed retry can't double-send. ``httpx`` is imported lazily.
+    """
+
+    DEFAULT_URL = "https://api.resend.com/emails"
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        from_addr: Optional[str] = None,
+        base_url: Optional[str] = None,
+        timeout: float = 20.0,
+    ) -> None:
+        self._api_key = api_key
+        self.from_addr = from_addr or os.environ.get("EMAIL_FROM")
+        self._base_url = base_url
+        self.timeout = timeout
+
+    def send_message(self, msg: EmailMessage, *, idempotency_key: str) -> str:
+        import httpx  # lazy
+
+        api_key = self._api_key or os.environ.get("RESEND_API_KEY")
+        base_url = self._base_url or os.environ.get("RESEND_BASE_URL") or self.DEFAULT_URL
+        if not api_key:
+            raise TransportError("RESEND_API_KEY is not configured")
+        from_addr = msg.get("From") or self.from_addr
+        if not from_addr:
+            raise TransportError("EMAIL_FROM is not configured")
+
+        body = msg.get_content() if msg.get_content_maintype() == "text" else str(msg)
+        payload = {
+            "from": from_addr,
+            "to": [msg.get("To")],
+            "subject": msg.get("Subject") or "",
+            "text": body,
+        }
+        headers = {
+            "Authorization": "Bearer {0}".format(api_key),
+            "Idempotency-Key": idempotency_key,
+        }
+        try:
+            resp = httpx.post(base_url, json=payload, headers=headers, timeout=self.timeout)
+        except Exception as exc:
+            raise TransportError("Resend request failed: {0}".format(exc)) from exc
+        if resp.status_code >= 400:
+            raise TransportError("Resend {0}: {1}".format(resp.status_code, resp.text[:200]))
+        try:
+            return str(resp.json().get("id") or idempotency_key)
+        except Exception:
+            return idempotency_key
+
+
 # ---- Fake transport (tests) -------------------------------------------------
 
 class FakeTransport(Transport):
@@ -182,11 +246,11 @@ class EmailAdapter:
 
     @property
     def transport(self) -> Transport:
-        """Lazily build an SMTPTransport from env if none was injected. Tests
-        always inject a FakeTransport, so the SMTP path (and its env reads) is
-        never touched under test."""
+        """Lazily build a transport from env if none was injected: Resend (HTTP
+        API) when ``RESEND_API_KEY`` is set, otherwise SMTP. Tests always inject a
+        FakeTransport, so neither real path (nor its env reads) is touched."""
         if self._transport is None:
-            self._transport = SMTPTransport()
+            self._transport = ResendTransport() if os.environ.get("RESEND_API_KEY") else SMTPTransport()
         return self._transport
 
     def _build_message(

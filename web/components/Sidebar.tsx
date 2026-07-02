@@ -17,6 +17,7 @@ const NAV: Item[] = [
   { href: "/", label: "Home", icon: I("M3 11.5 12 4l9 7.5M5 10v10h14V10") },
   { href: "/dashboard", label: "Dashboard", icon: I("M4 13h6V4H4zM14 20h6V4h-6zM4 20h6v-4H4z") },
   { href: "/leads", label: "Leads", icon: I("M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75") },
+  { href: "/compose", label: "Compose", icon: I("M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z") },
   { href: "/pipeline", label: "Pipeline", icon: I("M3 6h18M7 12h10M10 18h4") },
   { href: "/sourcing", label: "Sourcing", icon: I("M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3") },
   { href: "/scoring", label: "Scoring", icon: I("M12 2 15 9l7 .5-5.5 4.5L18 21l-6-3.7L6 21l1.5-7L2 9.5 9 9z") },

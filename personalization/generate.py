@@ -114,6 +114,8 @@ class FakeGenerator(Generator):
         niche = ctx.get("niche") or "your space"
         wiifm = ctx.get("wiifm") or "Exly can help you grow."
 
+        channel = ctx.get("channel") or "email"
+
         if self.mail_merge_only:
             # Pure mail-merge: name + niche only, no concrete scraped signal.
             body = (
@@ -125,9 +127,18 @@ class FakeGenerator(Generator):
         # Personalized: echo a real concrete signal so P4 passes.
         signal = ctx.get("signal")
         if signal:
-            opener = 'Hi {name}, I saw "{signal}" — '.format(name=name, signal=signal)
+            opener = 'Hi {name}, saw "{signal}" — '.format(name=name, signal=signal)
         else:
             opener = "Hi {name}, ".format(name=name)
+
+        if channel == "whatsapp":
+            # Short, no subject, WhatsApp-style.
+            body = (
+                "{opener}love your {niche} work. Exly can help you sell & scale it. "
+                "Open to a quick chat? (reply STOP to opt out)"
+            ).format(opener=opener, niche=niche)
+            return {"subject": "", "body": body}
+
         body = (
             "{opener}and given your work in {niche}, I thought Exly could help. "
             "{wiifm} {optout}"
@@ -158,7 +169,7 @@ def _best_signal(attrs: Dict[str, Any]) -> Optional[str]:
         # Trim to a quotable phrase (first ~8 words) so it stays natural.
         words = snippet.split()
         return " ".join(words[:8])
-    for key in ("subcategory", "category", "advertiser", "city"):
+    for key in ("subcategory", "sub_category", "category", "city", "audience_size"):
         v = attrs.get(key)
         if isinstance(v, str) and v.strip():
             return v.strip()
@@ -169,14 +180,15 @@ def _best_signal(attrs: Dict[str, Any]) -> Optional[str]:
 
 
 def build_prompt(
-    lead: Dict[str, Any], segment: str, angle: str
+    lead: Dict[str, Any], segment: str, angle: str, channel: str = "email"
 ) -> Dict[str, str]:
     """Build the ``{system, prompt}`` for the generator from lead + value props.
 
-    The prompt hands the model: the lead's real scraped signals, the chosen
-    value-prop (usp / differentiator / wiifm), and explicit instructions to
-    quote a concrete signal and include the opt-out — i.e. everything it needs
-    to produce copy that clears P4.
+    ``channel`` shapes the output: 'email' → Subject + a short body; 'whatsapp'
+    → one warm 2–3 sentence message, no subject, plain text, under ~350 chars.
+    The prompt hands the model the lead's real scraped signals + the chosen
+    value-prop and tells it to reference a concrete detail and include an opt-out,
+    so the output clears the P4 guardrail on either channel.
     """
     attrs = _lead_attributes(lead)
     vp = get_value_prop(segment, angle)
@@ -190,24 +202,45 @@ def build_prompt(
         lines.append("Name/page: {0}".format(name))
     if niche:
         lines.append("Niche: {0}".format(niche))
-    for key in ("category", "subcategory", "city", "followers"):
+    for key in ("category", "subcategory", "sub_category", "city", "followers",
+                "audience_size", "price", "notes"):
         v = attrs.get(key)
         if isinstance(v, str) and v.strip():
-            lines.append("{0}: {1}".format(key.capitalize(), v.strip()))
+            lines.append("{0}: {1}".format(key.replace("_", " ").capitalize(), v.strip()))
     ad_text = attrs.get("ad_text")
     if isinstance(ad_text, str) and ad_text.strip():
         lines.append('Their ad copy: "{0}"'.format(ad_text.strip()))
     signal_block = "\n".join(lines) if lines else "(no extra signals)"
 
-    system = (
+    base_role = (
         "You are an outbound copywriter for Exly, an all-in-one platform for "
-        "Indian course/coaching creators and affiliates. Write one short, warm, "
-        "specific cold outreach message. Reference a CONCRETE detail from the "
-        "lead's scraped signals (their ad copy, category, city, or following) — "
-        "never a generic greeting. Do NOT invent pricing, percentages, or "
-        "guarantees. Always include an opt-out line. Return 'Subject:' on the "
-        "first line, then a blank line, then the body."
+        "Indian course/coaching creators and affiliates. Reference a CONCRETE "
+        "detail from the lead's scraped signals (their ad copy, category, city, "
+        "or following) — never a generic greeting. Do NOT invent pricing, "
+        "percentages, or guarantees. "
     )
+    if channel == "whatsapp":
+        system = base_role + (
+            "Write ONE short WhatsApp message: 2–3 sentences, under ~350 "
+            "characters, warm and human, plain text (no markdown, no subject). "
+            "End with a soft opt-out like '(reply STOP to opt out)'. Return only "
+            "the message text."
+        )
+        closing = (
+            "Write the WhatsApp message now — short and natural. Reference this "
+            "concrete signal: {signal}\nEnd with a soft opt-out."
+        ).format(signal=signal or "(use any concrete signal above)")
+    else:
+        system = base_role + (
+            "Write one short, warm, specific cold outreach email. Always include "
+            "an opt-out line. Return 'Subject:' on the first line, then a blank "
+            "line, then the body."
+        )
+        closing = (
+            "Write the email now. Quote or clearly reference this concrete signal "
+            "so it reads personalized: {signal}\n"
+            "End with this exact opt-out line: {optout}"
+        ).format(signal=signal or "(use any concrete signal above)", optout=OPT_OUT_LINE)
 
     prompt = (
         "Lead signals:\n{signals}\n\n"
@@ -216,9 +249,7 @@ def build_prompt(
         "Exly USP: {usp}\n"
         "How we differ: {diff}\n"
         "What's in it for them: {wiifm}\n\n"
-        "Write the message now. Quote or clearly reference this concrete signal "
-        "so it reads personalized: {signal}\n"
-        "End with this exact opt-out line: {optout}"
+        "{closing}"
     ).format(
         signals=signal_block,
         segment=segment,
@@ -226,13 +257,12 @@ def build_prompt(
         usp=vp["usp"],
         diff=vp["differentiator"],
         wiifm=vp["wiifm"],
-        signal=signal or "(use any concrete signal above)",
-        optout=OPT_OUT_LINE,
+        closing=closing,
     )
 
     # Stash a few fields the FakeGenerator can parse deterministically.
-    prompt += "\n\n<<<CTX name={0}|niche={1}|signal={2}|wiifm={3}>>>".format(
-        name, niche, signal or "", vp["wiifm"]
+    prompt += "\n\n<<<CTX name={0}|niche={1}|signal={2}|wiifm={3}|channel={4}>>>".format(
+        name, niche, signal or "", vp["wiifm"], channel
     )
     return {"system": system, "prompt": prompt}
 
@@ -284,15 +314,18 @@ def generate_message(
     segment: str,
     angle: Optional[str],
     generator: Generator,
+    channel: str = "email",
 ) -> Dict[str, str]:
     """Generate ``{subject, body}`` for ``lead`` at ``segment``/``angle``.
 
-    ``angle`` defaults to :func:`personalization.value_props.pick_angle` for the
-    segment. The generator is injected so tests pass a :class:`FakeGenerator`.
+    ``channel`` ('email' | 'whatsapp') shapes the copy — WhatsApp returns a short
+    body and an empty subject. ``angle`` defaults to
+    :func:`personalization.value_props.pick_angle`. The generator is injected so
+    tests pass a :class:`FakeGenerator`.
     """
     if angle is None:
         angle = pick_angle(segment)
-    built = build_prompt(lead, segment, angle)
+    built = build_prompt(lead, segment, angle, channel=channel)
     out = generator.generate(built["prompt"], system=built["system"])
     # Defensive defaults so downstream always has both keys.
     return {"subject": out.get("subject", ""), "body": out.get("body", "")}
@@ -301,6 +334,13 @@ def generate_message(
 # ---------------------------------------------------------------------------
 # personalize_and_queue  (generate -> guardrail -> queue)
 # ---------------------------------------------------------------------------
+
+def default_generator() -> Generator:
+    """Anthropic Haiku when ``ANTHROPIC_API_KEY`` is set, else the offline Fake.
+    Lets the batch/CLI 'just work' in tests (Fake) and in prod (Haiku) with the
+    same call site."""
+    return AnthropicGenerator() if os.environ.get("ANTHROPIC_API_KEY") else FakeGenerator()
+
 
 def make_idempotency_key(
     lead_id: int, channel_id: int, campaign_id: Any, angle: str

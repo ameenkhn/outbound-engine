@@ -169,9 +169,10 @@ def _candidate_signals(attrs: Dict[str, Any]) -> List[Tuple[str, str]]:
     """
     signals: List[Tuple[str, str]] = []
 
-    # Word-level sources: category/subcategory/city. Both their individual words
-    # (token match) and the whole multi-word value (substring match).
-    for key in ("category", "subcategory", "city"):
+    # Word-level sources: category / (sub)category / city. Both their individual
+    # words (token match) and the whole multi-word value (substring match).
+    # ``sub_category`` (underscore) is included so imported-lead fields count.
+    for key in ("category", "subcategory", "sub_category", "city"):
         v = attrs.get(key)
         if not (isinstance(v, str) and v.strip()):
             continue
@@ -182,14 +183,14 @@ def _candidate_signals(attrs: Dict[str, Any]) -> List[Tuple[str, str]]:
         if len(whole) >= MIN_SIGNAL_LEN and " " in whole:
             signals.append(("whole", whole))
 
-    # Follower figure: the human string ("12.5K") and the numeric count — whole
-    # substrings only (a bare "12" should not match arbitrary digits in copy, so
-    # we keep them as distinctive whole strings).
-    followers = attrs.get("followers")
-    if isinstance(followers, str) and followers.strip():
-        whole = _norm(followers)
-        if len(whole) >= MIN_SIGNAL_LEN:
-            signals.append(("whole", whole))
+    # Follower / audience figures: human strings ("12.5K", "8000+ coaches; 36K IG")
+    # kept as distinctive whole substrings.
+    for key in ("followers", "audience_size"):
+        v = attrs.get(key)
+        if isinstance(v, str) and v.strip():
+            whole = _norm(v)
+            if len(whole) >= MIN_SIGNAL_LEN:
+                signals.append(("whole", whole))
     fc = attrs.get("follower_count")
     if isinstance(fc, (int, float)) and fc and len(str(int(fc))) >= MIN_SIGNAL_LEN:
         signals.append(("whole", str(int(fc))))
