@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { generateCopy } from "./actions";
+import { generateCopy, sendMessage } from "./actions";
 
 type Channel = "whatsapp" | "email";
 type Mode = "template" | "ai";
@@ -34,6 +34,21 @@ export function ComposeStudio() {
   const [body, setBody] = useState(TEMPLATES.whatsapp[0].body);
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [recipient, setRecipient] = useState("");
+  const [sendState, setSendState] = useState<{ ok: boolean; text: string } | null>(null);
+  const [sending, startSend] = useTransition();
+
+  function send() {
+    setSendState(null);
+    startSend(async () => {
+      const r = await sendMessage({
+        channel, to: recipient,
+        subject: fill(subject, sampleName, niche),
+        body: fill(body, sampleName, niche),
+      });
+      setSendState(r.ok ? { ok: true, text: "Sent! ✓" } : { ok: false, text: r.error });
+    });
+  }
 
   function applyTemplate(ch: Channel, idx: number) {
     const t = TEMPLATES[ch][idx];
@@ -137,6 +152,26 @@ export function ComposeStudio() {
           </div>
           <p className="text-[11px] text-muted">
             {body.length} chars{channel === "whatsapp" && body.length > 350 ? " · long for WhatsApp (keep under ~350)" : ""}
+          </p>
+        </div>
+
+        {/* send */}
+        <div className="card space-y-2">
+          <label className="block text-xs text-muted">
+            Send to ({channel === "whatsapp" ? "phone with country code" : "email"})
+          </label>
+          <div className="flex gap-2">
+            <input className="input" value={recipient} onChange={(e) => setRecipient(e.target.value)}
+              placeholder={channel === "whatsapp" ? "+919876543210" : "you@example.com"} />
+            <button className="btn shrink-0" disabled={sending} onClick={send}>
+              {sending ? "Sending…" : "Send →"}
+            </button>
+          </div>
+          {sendState && (
+            <p className={"text-sm " + (sendState.ok ? "text-green-600" : "text-red-600")}>{sendState.text}</p>
+          )}
+          <p className="text-[11px] text-muted">
+            Sends via {channel === "whatsapp" ? "AiSensy" : "Resend"} — test with your own {channel === "whatsapp" ? "number" : "email"} first.
           </p>
         </div>
       </div>

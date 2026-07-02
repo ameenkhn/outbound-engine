@@ -91,8 +91,8 @@ export default async function DashboardPage() {
   const awaitingList = awaiting ?? [];
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-semibold">Dashboard</h1>
+    <div className="space-y-6 rise">
+      <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
 
       {/* north star + today */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -190,9 +190,13 @@ export default async function DashboardPage() {
 
 function BigStat({ label, value, accent, warn }: { label: string; value: number | string; accent?: boolean; warn?: boolean }) {
   return (
-    <div className={"card " + (warn ? "border-red-300 bg-red-50" : "")}>
-      <div className={"text-2xl font-semibold tabular-nums " + (accent ? "text-accent" : warn ? "text-red-700" : "")}>{value}</div>
-      <div className="mt-1 text-xs text-muted">{label}</div>
+    <div className={"card relative overflow-hidden " + (warn ? "border-red-300" : "")}>
+      {accent && (
+        <div className="absolute inset-x-0 top-0 h-1"
+          style={{ backgroundImage: "linear-gradient(90deg, rgb(var(--accent)), rgb(var(--accent-2)))" }} />
+      )}
+      <div className={"text-3xl font-bold tabular-nums " + (accent ? "grad-text" : warn ? "text-red-600" : "")}>{value}</div>
+      <div className="mt-1 text-xs font-medium text-muted">{label}</div>
     </div>
   );
 }

@@ -84,9 +84,9 @@ export function PipelineBoard({ leads }: { leads: BoardLead[] }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 rise">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="text-xl font-semibold">Pipeline</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Pipeline</h1>
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Select label="Segment" value={seg} onChange={(v) => setSeg(v as "all" | Segment)}
             options={[["all", "All"], ["creator", "Creator"], ["affiliate", "Affiliate"]]} />

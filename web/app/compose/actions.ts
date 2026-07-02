@@ -1,5 +1,54 @@
 "use server";
 
+/** Send a composed message directly via AiSensy (WhatsApp) or Resend (email).
+ *  Runs server-side so keys never reach the browser. Great for test sends; the
+ *  worker handles batch sending at scale. */
+export async function sendMessage(input: {
+  channel: "whatsapp" | "email";
+  to: string;
+  subject?: string;
+  body: string;
+}): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const to = (input.to || "").trim();
+  if (!to) return { ok: false, error: "Enter a recipient." };
+  if (!input.body.trim()) return { ok: false, error: "Message is empty." };
+
+  try {
+    if (input.channel === "whatsapp") {
+      const key = process.env.AISENSY_API_KEY;
+      const campaign = process.env.AISENSY_CAMPAIGN;
+      if (!key || !campaign) return { ok: false, error: "Set AISENSY_API_KEY + AISENSY_CAMPAIGN in Vercel to send WhatsApp." };
+      const res = await fetch("https://backend.aisensy.com/campaign/t1/api/v2", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          apiKey: key, campaignName: campaign,
+          destination: to.replace(/[^\d]/g, ""),
+          userName: "Exly Outbound",
+          templateParams: [input.body],
+        }),
+      });
+      if (!res.ok) return { ok: false, error: `AiSensy ${res.status}: ${(await res.text()).slice(0, 160)}` };
+      return { ok: true, id: "sent" };
+    }
+
+    // email via Resend
+    const key = process.env.RESEND_API_KEY;
+    const from = process.env.EMAIL_FROM;
+    if (!key || !from) return { ok: false, error: "Set RESEND_API_KEY + EMAIL_FROM in Vercel to send email." };
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify({ from, to: [to], subject: input.subject || "", text: input.body }),
+    });
+    if (!res.ok) return { ok: false, error: `Resend ${res.status}: ${(await res.text()).slice(0, 160)}` };
+    const data = await res.json();
+    return { ok: true, id: String(data?.id || "sent") };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /** Generate outreach copy with Claude Haiku (cheap + fast). Server-side so the
  *  API key never reaches the browser. Returns {subject?, body} or an error. */
 export async function generateCopy(input: {
