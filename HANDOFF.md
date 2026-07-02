@@ -3,7 +3,7 @@
 > **New session: read this top-to-bottom, then continue from "▶ Pick up here."**
 > Full vision: [PRD.md](PRD.md) · public overview: [README.md](README.md) · front end: [web/README.md](web/README.md)
 
-_Last updated: 2026-06-27_
+_Last updated: 2026-07-02_ — **the engine is now feature-complete (L0–L10) for internal-team use.** README.md is the authoritative current status; sections 4 onward below are historical/roadmap notes retained for context.
 
 ---
 
@@ -16,21 +16,25 @@ A layered (L0–L10) engine that sources ICP creators/affiliates across India, r
 - **Vercel:** the `outbound` project deploys `web/` as Next.js (Root Directory = `web` + `web/vercel.json` pin); the deploy is **green**. Env vars set in Vercel (rotate if not already).
 - **Parallel session:** a second session runs a different task on its own branch and will merge into `main` separately. Don't clobber it.
 
-## 3. What's built (verified)
+## 3. What's built (verified — 2026-07-02)
+**306 Python tests green + web build green; DB = Supabase Mumbai `kcfcibmbpnofpxsysagn`, migrations `0001`–`0007`, 113 leads.**
+
 | Layer | Status | Notes |
 |---|---|---|
-| L0 data foundation | ✅ | schema migrations `0001`–`0004` live on Supabase; loader + composite identity resolver; `send_jobs` queue. **117 backend tests green on live Postgres.** |
-| L1 targeting + sourcing | 🟢 | brain Mode A (persona) + Mode B (keyword) → `target_specs`; Meta scraper + YouTube Data API adapter via `SourceAdapter`. IG/LinkedIn pending. |
-| L2 enrichment + scoring | ✅ | rules-based `icp_score` (0–100) + deterministic `priority_rank`; weights in `scoring_config` (migration 0004). |
-| L3 personalization | ✅ | value-prop library + P4 anti-mail-merge guardrail. |
-| L4 dispatch | 🟡 | **email** adapter + warmup built. **WhatsApp** = opt-in-led BSP (Interakt) adapter PENDING. |
-| L5 follow-ups | ✅ | D0/D3/D7 cadence + stop rules. Placeholder double-enqueue bug FIXED (commits `2133ef3`+`a39973d`, 12/12 live PG). |
-| L6 reply handling | 🟡 | dumb inbound (reply/bounce → events + suppression + opt-out + human handoff). Smart RAG auto-answer PENDING. |
-| L7 conversion / booking | ⬜ | handoff-payload stub only. |
-| L8 orchestration | 🟡 | Celery+Redis + Postgres durable queue (idempotent claim→send→record) + `app_jobs` consumer. The always-on source→…→reply loop NOT assembled. |
-| L9 feedback loops | ⬜ | not started. |
-| L10 analytics | 🟡 | covered by the `web/` dashboard (funnel / reputation / awaiting-reply). |
-| **Front end (CRM)** | ✅ | `web/` Next.js + Supabase on Vercel: **L1 sourcing, L2 scoring, dashboard, pipeline, lead-360**. `next build` clean (7 routes). |
+| L0 data foundation | ✅ | schema migrations `0001`–`0007` live on Supabase Mumbai; loader + composite identity resolver; `send_jobs` + `outreach` + `kb_docs` tables. |
+| L1 targeting + sourcing | ✅ | brain Mode A + Mode B → `target_specs`; **five live sources** — Meta Ad Library, YouTube, **Instagram + LinkedIn** (compliant public web-search), web-search enrichment — via `SourceAdapter`; scrape-time dedup. |
+| L2 enrichment + scoring | ✅ | rules-based `icp_score` (0–100) + deterministic `priority_rank`; weights in `scoring_config`. |
+| L3 personalization | ✅ | value-prop library + P4 guardrail; Claude Haiku channel-aware copy (email + WhatsApp). |
+| L4 dispatch | ✅ | **email via Resend** + **WhatsApp via AiSensy** (live HTTP adapters) + Smartlead campaign push; email warmup. Sends fire from Compose and log to `outreach`. |
+| L5 follow-ups | ✅ | D0/D3/D7 cadence + stop rules. |
+| L6 reply handling | ✅ | inbound webhooks (`/api/webhooks/{resend,aisensy}`) auto-log replies, flip to `replied`, suppress on bounce/STOP; **RAG** (`kb_docs` + `kb_search`) powers suggested-reply + auto-responder; KB editable at `/kb`. |
+| L7 conversion / booking | ✅ | book-demo form → `conversions` + `book` event → `demo_booked`, with **Google Calendar + Meet** sync. |
+| L8 orchestration | ✅ | durable queue + `app_jobs` consumer **+ always-on `pipeline.py` loop** (discover→score→personalize→gated send), schedulable via `enqueue_cycle` / Celery beat. |
+| L9 feedback loops | ✅ | `/insights` — reply-rate + conversion by niche/channel/source + heuristic suggested actions. |
+| L10 analytics | ✅ | funnel / send / reply-rate / conversion via `web/` dashboard, Outreach log, Insights. |
+| **Front end (CRM)** | ✅ | `web/` Next.js + Supabase on Vercel: sourcing, scoring, dashboard, pipeline, lead-360 (thread + AI reply + booking), compose, outreach, insights, `/kb`. `next build` clean (14 routes). |
+
+> **Remaining is not layer work — it's productization:** multi-tenant auth + billing + self-serve onboarding (to sell beyond the internal team), and the optional deeper items in the roadmap below (import-at-scale, niche taxonomy, messaging-flow builder). Setup to go live (env vars, provider accounts, webhooks, Railway paid) is in the go-live checklist.
 
 ## 4. This-session deliverables (front end)
 - `web/` Next.js app — reads Supabase directly; engine actions write `app_jobs` rows.
@@ -52,9 +56,10 @@ L0 schema/loader/identity-resolver · L1 targeting brain (Mode A+B) + Meta & You
 6. **Inbound reply body** — store the reply text (events hold only intent/sentiment now) so the conversation thread + smart replies have content.
 
 ### C. 🆕 YET TO BUILD — new code (v2 → v3)
+> **⚠️ Mostly DONE now (2026-07-02) — see §3 for the authoritative status.** Built since this list was written: **L4 WhatsApp (AiSensy)**, **L6 smart/RAG reply + auto-responder**, **L7 booking + Google Calendar** (no-show logic still TBD), **L9 insights** (heuristic; full bandit TBD), **L10 analytics**, **Instagram + LinkedIn sourcing**, **L8 always-on loop**. Genuinely still open below: CRM **import-at-scale**, **niche taxonomy**, **messaging-flow builder**, and **multi-tenant auth/billing**.
 - **L4 WhatsApp** — opt-in-led Interakt BSP adapter into the send seam (templates + 24h window + opt-in; PRD §13). Plus a Click-to-WhatsApp / email opt-in funnel to *earn* the opt-in (cold WhatsApp is banned).
 - **L6 smart reply** — intent classify (Haiku) → KB-RAG auto-answer (`kb/` embeddings + pgvector) → escalate. The "is it automated?" two-way core.
-- **L7 conversion / demo booking** — Calendly/Cal.com webhook → mark `BOOKED` → sales handoff (only a stub today). + **No-show** detect + re-engage (`0004` fields ready; logic TBD).
+- **L7 conversion / demo booking** — ✅ built: book-demo form → `conversions` + Google Calendar/Meet sync. Still open: **No-show** detect + re-engage (`0004` fields ready; logic TBD), and external Calendly/Cal.com webhook if desired.
 - **L9 feedback loops** — Loop A (targeting: bias sourcing + re-weight ICP toward converters) + Loop B (content: bandit on angle/subject/CTA per segment). Reads `events`+`conversions`.
 - **L10 analytics/ops** — reputation alerts + weekly digest (the CRM dashboard already covers the funnel view).
 - **Sourcing expansion** — Instagram + LinkedIn (sourcing-only) adapters on the `SourceAdapter` interface.

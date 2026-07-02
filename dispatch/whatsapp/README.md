@@ -1,6 +1,6 @@
 # WhatsApp Dispatch
 
-**Status:** 🔧 Not built yet — scaffold for the upcoming layer.
+**Status:** ✅ Built — L4 WhatsApp dispatch: AiSensy approved-template send, registered in `dispatch.registry` under `whatsapp` (opt-in-led).
 **PRD:** L4 / M5 — see [`../PRD.md`](../PRD.md) (or `../../PRD.md`).
 **Builds on:** personalization/ (L3)
 

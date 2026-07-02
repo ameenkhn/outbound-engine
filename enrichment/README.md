@@ -1,6 +1,6 @@
 # Enrichment, Scoring & Prioritization
 
-**Status:** 🔧 Not built yet — scaffold for the upcoming layer.
+**Status:** ✅ Built — L2 enrichment + scoring: rules-based `icp_score` (0–100) + deterministic `priority_rank`; weights configurable via `scoring_config`.
 **PRD:** L2 / M3 — see [`../PRD.md`](../PRD.md) (or `../../PRD.md`).
 **Builds on:** data/ (L0), sourcing/
 

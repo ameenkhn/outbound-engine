@@ -1,6 +1,6 @@
 # Email Dispatch
 
-**Status:** 🔧 Not built yet — scaffold for the upcoming layer.
+**Status:** ✅ Built — L4 email dispatch: Resend HTTP transport (+ SMTP fallback) + warmup ramp, registered in `dispatch.registry` under `email`.
 **PRD:** L4 / M5 — see [`../PRD.md`](../PRD.md) (or `../../PRD.md`).
 **Builds on:** personalization/ (L3)
 

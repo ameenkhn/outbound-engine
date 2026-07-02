@@ -1,6 +1,6 @@
 # YouTube Sourcing
 
-**Status:** 🔧 Not built yet — scaffold for the upcoming layer.
+**Status:** ✅ Built — L1 YouTube source adapter (official Data API v3) on the `SourceAdapter` interface.
 **PRD:** L1 / M1 — see [`../PRD.md`](../PRD.md) (or `../../PRD.md`).
 **Builds on:** sourcing layer
 

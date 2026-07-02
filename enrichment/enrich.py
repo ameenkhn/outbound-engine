@@ -139,19 +139,20 @@ COMPETITOR_TOOLS = (
 )
 
 
-def competitor_tool_hint(ad_text: Optional[str]) -> Optional[str]:
+def competitor_tool_hint(ad_text: Optional[str], tools=None) -> Optional[str]:
     """Scan ad copy for a known competitor-tool name.
 
-    Returns the matched tool name (lowercased, as listed in
-    :data:`COMPETITOR_TOOLS`) or ``None`` when no hint is present. Matching is
-    case-insensitive substring on the ad copy.
+    Returns the matched tool name (lowercased) or ``None`` when no hint is
+    present. Matching is case-insensitive substring on the ad copy. ``tools``
+    overrides the default :data:`COMPETITOR_TOOLS` list (e.g. from
+    ``scoring_config`` so the CRM can tune it); falsy ``tools`` uses the default.
     """
     if not ad_text:
         return None
     haystack = str(ad_text).lower()
-    for tool in COMPETITOR_TOOLS:
-        if tool in haystack:
-            return tool
+    for tool in (tools or COMPETITOR_TOOLS):
+        if str(tool).lower() in haystack:
+            return str(tool).lower()
     return None
 
 

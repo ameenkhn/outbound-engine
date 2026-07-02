@@ -1,6 +1,6 @@
 # Analytics & Ops
 
-**Status:** 🔧 Not built yet — scaffold for the upcoming layer.
+**Status:** ✅ Built (in `web/`) — funnel / send / reply-rate / conversion views are covered by the `web/` dashboard, Outreach log and Insights page; no separate service needed.
 **PRD:** L10 / M11 — see [`../PRD.md`](../PRD.md) (or `../../PRD.md`).
 **Builds on:** orchestration/ (L8)
 

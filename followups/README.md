@@ -1,6 +1,6 @@
 # Follow-up Engine
 
-**Status:** 🔧 Not built yet — scaffold for the upcoming layer.
+**Status:** ✅ Built — L5 follow-ups: D0/D3/D7 cadence + stop rules (stops on reply/opt-out).
 **PRD:** L5 / M6 — see [`../PRD.md`](../PRD.md) (or `../../PRD.md`).
 **Builds on:** dispatch/ (L4)
 

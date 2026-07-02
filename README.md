@@ -61,12 +61,12 @@ Outbound/
 │   ├── whatsapp/           L4 — WhatsApp send via AiSensy               ✅
 │   └── smartlead/          L4 — Smartlead campaign push                 ✅
 ├── followups/              L5 — D0/D3/D7 cadence                        ✅
-├── replies/ + inbound      L6 — inbound webhooks + AI suggested reply   🟢
-├── conversion/             L7 — demo booking (form + conversions row)   🟢
-├── orchestration/          L8 — Celery+Redis durable queue + app_jobs   🟡
-├── feedback/               L9 — insights + suggested actions (in web/)  🟢
-├── analytics/              L10 — (covered by web/ dashboard)            🟡
-├── kb/                     RAG knowledge base (for L6)                  🔧
+├── replies/ + inbound      L6 — inbound webhooks + RAG reply/chatbot    ✅
+├── conversion/             L7 — demo booking + Google Calendar sync     ✅
+├── orchestration/          L8 — durable queue + always-on pipeline loop ✅
+├── feedback/               L9 — insights + suggested actions (in web/)  ✅
+├── analytics/              L10 — funnel/insights (covered by web/)      ✅
+├── kb/                     RAG knowledge base — live (kb_docs + /kb)    ✅
 │
 └── web/                    CRM front end — Next.js + Supabase           ✅
     ├── app/{sourcing,scoring,dashboard,pipeline,leads,compose,outreach,insights,kb}

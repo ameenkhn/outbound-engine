@@ -1,6 +1,6 @@
 # AI Targeting Brain
 
-**Status:** 🔧 Not built yet — scaffold for the upcoming layer.
+**Status:** ✅ Built — L1 targeting brain: Mode A (persona) + Mode B (keyword expansion) produce approved `target_specs` the sourcing adapters consume.
 **PRD:** M1 — see [`../PRD.md`](../PRD.md) (or `../../PRD.md`).
 **Builds on:** data/ (L0)
 

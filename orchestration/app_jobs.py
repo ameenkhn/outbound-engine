@@ -16,8 +16,8 @@ orchestration/queue.py. Each job is dispatched by `kind`:
     mode_b        -> targeting.brain.run_mode_b (keyword expansion, auto-approved)
     mode_a        -> targeting.brain.run_mode_a (persona -> unapproved deep spec)
     approve_spec  -> flip target_specs.approved = TRUE (pure DB)
-    source_run    -> NOT WIRED HERE — see _do_source_run; the backend session that
-                     owns sourcing/ must confirm the adapter entrypoint.
+    source_run    -> run the SourceAdapters + load the resulting leads (_do_source_run)
+    pipeline_cycle-> L8 always-on tick: discover -> score -> personalize -> gated send
 """
 from __future__ import annotations
 

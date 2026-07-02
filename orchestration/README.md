@@ -1,6 +1,6 @@
 # Orchestration (always-on loop)
 
-**Status:** 🔧 Not built yet — scaffold for the upcoming layer.
+**Status:** ✅ Built — Celery+Redis + Postgres durable queue, `app_jobs` consumer, and the always-on **pipeline loop** (`orchestration/pipeline.py`: discover→score→personalize→gated send), schedulable via `enqueue_cycle` / beat.
 **PRD:** L8 / M9 — see [`../PRD.md`](../PRD.md) (or `../../PRD.md`).
 **Builds on:** conversion/ (L7)
 

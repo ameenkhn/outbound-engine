@@ -1,6 +1,6 @@
 # Feedback Loops
 
-**Status:** 🔧 Not built yet — scaffold for the upcoming layer.
+**Status:** ✅ Built (in `web/`) — the `/insights` page computes reply-rate + conversion by niche/channel/source and surfaces heuristic suggested actions (which niche to prioritise, which channel wins, which ICP weight to bump).
 **PRD:** L9 / M10 — see [`../PRD.md`](../PRD.md) (or `../../PRD.md`).
 **Builds on:** orchestration/ (L8)
 

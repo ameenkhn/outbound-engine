@@ -42,7 +42,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 export DATABASE_URL="postgresql://postgres:<DB-PASSWORD>@db.<project-ref>.supabase.co:5432/postgres"
 
-.venv/bin/python -m data.migrate --status     # shows pending: 0001..0004
+.venv/bin/python -m data.migrate --status     # shows pending: 0001..0007
 .venv/bin/python -m data.migrate              # applies all four, idempotent
 ```
 

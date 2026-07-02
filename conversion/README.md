@@ -1,6 +1,6 @@
 # Conversion / Demo Booking
 
-**Status:** 🔧 Not built yet — scaffold for the upcoming layer.
+**Status:** ✅ Built (in `web/`) — demo booking form on the lead page writes `conversions`, emits a `book` event, advances the lead to `demo_booked`, and syncs a Google Calendar event + Meet link.
 **PRD:** L7 / M8 — see [`../PRD.md`](../PRD.md) (or `../../PRD.md`).
 **Builds on:** replies/ (L6)
 

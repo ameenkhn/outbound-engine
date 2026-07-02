@@ -8,13 +8,13 @@ We already have: a Meta Ad Library scraper and tested email reach-outs. We are m
 
 ---
 
-## Build status — 2026-06-27 (added post-kickoff; resume details in HANDOFF.md)
-Built across parallel sessions, verified on live Supabase Postgres, plus a build-clean CRM front end. Combined tip: branch `web-frontend-l1-l2` (not yet merged to `main`).
-- ✅ **L0** schema/loader/resolver · **L2** ICP scoring · **L3** personalization + P4 guardrail · **L5** follow-ups · **front-end CRM** (`web/`: L1 sourcing, L2 scoring, dashboard, pipeline, lead-360)
-- 🟢 **L1** targeting brain (Mode A + B) + Meta & YouTube adapters (IG/LinkedIn pending)
-- 🟡 **L4** email only (WhatsApp BSP pending) · **L6** dumb inbound (RAG pending) · **L8** durable queue (always-on loop pending) · **L10** via the CRM dashboard
-- ⬜ **L7** booking (stub) · **L9** feedback loops
-- 🚧 **Go-live gates:** DPDP legal sign-off · rotate leaked tokens (Vercel / AI-gateway / `SUPABASE_SECRET_KEY`) · run migration `0004` · wire `scoring_config` into the scorer + `_do_source_run`.
+## Build status — 2026-07-02 (feature-complete for internal-team use; details in HANDOFF.md / README.md)
+Verified on live Supabase Postgres (Mumbai, migrations `0001`–`0007`, 113 leads) + build-clean CRM front end. **306 Python tests green + web build green.**
+- ✅ **L0** schema/loader/resolver · **L1** targeting brain (Mode A + B) + five live sources (Meta, YouTube, **Instagram, LinkedIn**, web-search) · **L2** ICP scoring · **L3** personalization + P4 guardrail + Haiku copy
+- ✅ **L4** dispatch — **WhatsApp (AiSensy) + email (Resend)** live + Smartlead · **L5** follow-ups · **L6** inbound webhooks + **RAG** suggested-reply/auto-responder (`kb_docs`, `/kb`)
+- ✅ **L7** demo booking + **Google Calendar** sync · **L8** durable queue + **always-on pipeline loop** · **L9** insights/feedback · **L10** analytics via CRM
+- ✅ **Front-end CRM** (`web/`): sourcing, scoring, dashboard, pipeline, lead-360, compose, outreach, insights, `/kb`
+- 🚧 **To go live (setup, not code):** provider env vars + accounts, register inbound webhooks, Railway paid plan, DPDP legal sign-off. **Productization layer (not built by design):** multi-tenant auth + billing.
 
 ---
 

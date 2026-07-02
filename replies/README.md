@@ -1,6 +1,6 @@
 # Reply Handling & Two-Way
 
-**Status:** 🔧 Not built yet — scaffold for the upcoming layer.
+**Status:** ✅ Built — inbound replies handled live by `web/app/api/webhooks/{resend,aisensy}` (auto-log, mark replied, suppress on bounce/STOP) + RAG suggested-reply/auto-responder. This folder holds the original L6 scaffold.
 **PRD:** L6 / M7 — see [`../PRD.md`](../PRD.md) (or `../../PRD.md`).
 **Builds on:** followups/ (L5)
 

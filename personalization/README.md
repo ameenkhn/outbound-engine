@@ -1,6 +1,6 @@
 # Personalization Engine
 
-**Status:** 🔧 Not built yet — scaffold for the upcoming layer.
+**Status:** ✅ Built — L3 personalization: value-prop library + P4 anti-mail-merge guardrail + Claude Haiku channel-aware copy (email + WhatsApp).
 **PRD:** L3 / M4 — see [`../PRD.md`](../PRD.md) (or `../../PRD.md`).
 **Builds on:** enrichment/ (L2)
 

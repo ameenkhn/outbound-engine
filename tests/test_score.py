@@ -216,3 +216,49 @@ def test_high_but_uncapped_lead_is_between():
     # 10 + 20 + 20 + 10 + 5 = 65
     assert score == 65
     assert 0 < score < 100
+
+
+# ---------------------------------------------------------------------------
+# scoring_config overrides (CRM weights panel -> live scorer). Locks that the
+# runtime overrides actually change the score and that partial configs merge.
+# ---------------------------------------------------------------------------
+
+def _cfg_lead():
+    return (
+        {"attributes": {"category": "fitness", "ad_text": "grow your course"},
+         "follower_count": 5000, "geo": "IN", "segment": "creator", "niche": "fitness"},
+        [{"type": "email", "handle": "a@b.com", "deliverable": True, "opted_out": False}],
+    )
+
+
+def test_scoring_config_niche_override_changes_score():
+    from enrichment.score import score_lead
+    lead, chans = _cfg_lead()
+    base = score_lead(lead, chans)
+    # 'fitness' no longer a target niche -> loses the +20 niche_match
+    assert score_lead(lead, chans, niches=["astrology"]) == base - 20
+
+
+def test_scoring_config_weight_override_and_partial_merge():
+    from enrichment.score import score_lead
+    lead, chans = _cfg_lead()
+    base = score_lead(lead, chans)
+    # bumping niche_match 20 -> 50 adds 30 (capped at 100)
+    assert score_lead(lead, chans, weights={"niche_match": 50}) == min(base + 30, 100)
+    # a PARTIAL weights dict must merge over defaults, not replace them
+    assert score_lead(lead, chans, weights={"band_micro": 0}) == base - 20
+
+
+def test_scoring_config_competitor_tools_override():
+    from enrichment.score import score_lead
+    lead, chans = _cfg_lead()
+    base = score_lead(lead, chans)  # default competitor list: no hint in ad_text
+    # custom competitor list that matches the ad copy -> +competitor_hint (10)
+    assert score_lead(lead, chans, competitor_tools=["course"]) == min(base + 10, 100)
+
+
+def test_score_lead_defaults_unchanged_without_config():
+    # Back-compat: the 2-arg call path must be identical to passing None configs.
+    from enrichment.score import score_lead
+    lead, chans = _cfg_lead()
+    assert score_lead(lead, chans) == score_lead(lead, chans, weights=None, niches=None, competitor_tools=None)

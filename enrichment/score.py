@@ -1,9 +1,12 @@
 """Rules-based ICP score — the committed v1 formula (L2).
 
-ONE auditable place defines the score. Everything is read from the module-level
+ONE auditable place defines the score. The point values live in the module-level
 :data:`WEIGHTS` dict and the two config lists (:data:`TARGET_ICP_NICHES`,
-which reuses :data:`enrichment.enrich.COMPETITOR_TOOLS`) so the formula can be
-tuned by editing constants, not logic.
+:data:`enrichment.enrich.COMPETITOR_TOOLS`), which are the committed v1 defaults.
+At runtime :func:`score_lead` also accepts ``weights`` / ``niches`` /
+``competitor_tools`` overrides so the CRM's editable ``scoring_config`` row drives
+the live scorer (:mod:`enrichment.run` loads it and passes it in); the constants
+here are the fallback when no config is present.
 
 The contract (frozen as v1):
 
@@ -100,14 +103,19 @@ WEIGHTS = {
 }
 
 
-def _niche_match(niche: Optional[str], category: Optional[str]) -> bool:
-    """True if the lead's niche or category hits the target-ICP list."""
+def _niche_match(niche: Optional[str], category: Optional[str], niches=None) -> bool:
+    """True if the lead's niche or category hits the target-ICP list.
+
+    ``niches`` overrides :data:`TARGET_ICP_NICHES` (e.g. from ``scoring_config``);
+    falsy ``niches`` uses the default list.
+    """
+    targets = niches or TARGET_ICP_NICHES
     for value in (niche, category):
         if not value:
             continue
         text = str(value).lower()
-        for target in TARGET_ICP_NICHES:
-            if target in text:
+        for target in targets:
+            if str(target).lower() in text:
                 return True
     return False
 
@@ -142,13 +150,25 @@ def _lead_get(lead: Any, key: str, default: Any = None) -> Any:
     return getattr(lead, key, default)
 
 
-def score_lead(lead: Any, channels: Optional[List[Any]]) -> int:
+def score_lead(
+    lead: Any,
+    channels: Optional[List[Any]],
+    weights: Optional[Mapping[str, Any]] = None,
+    niches: Optional[List[str]] = None,
+    competitor_tools: Optional[List[str]] = None,
+) -> int:
     """Compute the 0-100 ICP score for a lead given its channels.
 
     ``lead`` is any mapping/row exposing ``attributes`` (JSONB dict),
     ``follower_count``, ``geo``, ``segment``, ``niche``. ``channels`` is the
     list of that lead's channel mappings. Returns an int in [0, 100]; a gated
     lead returns 0.
+
+    Optional ``weights`` / ``niches`` / ``competitor_tools`` override the module
+    defaults — this is how the CRM's editable ``scoring_config`` reaches the
+    scorer (``enrichment.run`` loads the row and passes them in). ``weights`` is
+    merged over the defaults, so a partial config still scores correctly; falsy
+    values fall back to the committed v1 constants.
     """
     attrs = _lead_get(lead, "attributes") or {}
     geo = _lead_get(lead, "geo")
@@ -166,7 +186,8 @@ def score_lead(lead: Any, channels: Optional[List[Any]]) -> int:
     if (geo or "").upper() != "IN":
         return 0
 
-    w = WEIGHTS
+    # Merge config over defaults so a partial scoring_config still scores fully.
+    w = {**WEIGHTS, **(weights or {})}
     total = 0
 
     # ---- signal richness (capped at signal_max) ---------------------------
@@ -193,7 +214,7 @@ def score_lead(lead: Any, channels: Optional[List[Any]]) -> int:
 
     # ---- niche / category in target-ICP list ------------------------------
     category = attrs.get("category") if isinstance(attrs, Mapping) else None
-    if _niche_match(niche, category):
+    if _niche_match(niche, category, niches):
         total += w["niche_match"]
 
     # ---- segment clarity ---------------------------------------------------
@@ -204,7 +225,7 @@ def score_lead(lead: Any, channels: Optional[List[Any]]) -> int:
 
     # ---- competitor-tool hint ---------------------------------------------
     ad_text = attrs.get("ad_text") if isinstance(attrs, Mapping) else None
-    if competitor_tool_hint(ad_text) is not None:
+    if competitor_tool_hint(ad_text, competitor_tools) is not None:
         total += w["competitor_hint"]
 
     # ---- verified email present (not just phone) --------------------------

@@ -1,6 +1,6 @@
 # Knowledge Base (RAG)
 
-**Status:** 🔧 Not built yet — scaffold for the upcoming layer.
+**Status:** ✅ Live — RAG knowledge base is the `kb_docs` table (Postgres full-text search + `kb_search`), editable in-app at `/kb`, used by the L6 suggested-reply and auto-responder.
 **PRD:** supports M7 — see [`../PRD.md`](../PRD.md) (or `../../PRD.md`).
 **Builds on:** —
 

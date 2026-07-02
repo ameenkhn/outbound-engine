@@ -31,6 +31,33 @@ from enrichment.score import score_lead
 ELIGIBLE_STATUSES = ("new", "queued")
 
 
+def _load_scoring_config(cur) -> Dict[str, Any]:
+    """Load the editable scoring config (weights / niches / competitor tools) the
+    CRM writes to ``scoring_config`` (id=1). Returns ``{}`` when the table/row is
+    absent (fresh test schemas, pre-0004 DBs) so the scorer falls back to its
+    committed v1 constants — the panel is thus authoritative when present, and
+    scoring never breaks when it isn't.
+    """
+    try:
+        cur.execute(
+            "SELECT weights, target_niches, competitor_tools FROM scoring_config WHERE id = 1"
+        )
+        row = cur.fetchone()
+    except Exception:
+        return {}
+    if not row:
+        return {}
+    weights, niches, tools = row
+    cfg: Dict[str, Any] = {}
+    if isinstance(weights, dict) and weights:
+        cfg["weights"] = weights
+    if niches:
+        cfg["niches"] = list(niches)
+    if tools:
+        cfg["competitor_tools"] = list(tools)
+    return cfg
+
+
 def _fetch_eligible_leads(cur) -> List[Dict[str, Any]]:
     """Return eligible leads as plain dicts (id, scoring inputs)."""
     cur.execute(
@@ -76,6 +103,7 @@ def run(conn=None) -> Dict[str, int]:
         conn = db.connect()
     try:
         with conn.cursor() as cur:
+            cfg = _load_scoring_config(cur)          # CRM-editable weights/niches/tools (or {})
             leads = _fetch_eligible_leads(cur)
             channels_by_lead = _fetch_channels_by_lead(cur, [l["id"] for l in leads])
 
@@ -83,7 +111,12 @@ def run(conn=None) -> Dict[str, int]:
             for lead in leads:
                 channels = channels_by_lead.get(lead["id"], [])
                 band = follower_band(lead.get("follower_count"))
-                score = score_lead(lead, channels)
+                score = score_lead(
+                    lead, channels,
+                    weights=cfg.get("weights"),
+                    niches=cfg.get("niches"),
+                    competitor_tools=cfg.get("competitor_tools"),
+                )
                 scored.append(
                     {
                         "id": lead["id"],
@@ -137,6 +170,7 @@ def run(conn=None) -> Dict[str, int]:
             "eligible": len(leads),
             "ranked": len(rankable),
             "gated": len(leads) - len(rankable),
+            "config": "scoring_config" if cfg else "defaults",
         }
     finally:
         if own_conn:

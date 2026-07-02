@@ -88,9 +88,8 @@ export function WeightsPanel({ config }: { config: ScoringConfig | null }) {
 
       {msg && <p className="mt-2 text-sm text-muted">{msg}</p>}
       <p className="mt-2 text-xs text-muted">
-        Note: editing here updates <code>scoring_config</code> (source of truth). The Python
-        scorer must be wired to read it (see web/README · backend TODO); until then it uses
-        its committed defaults.
+        Editing here updates <code>scoring_config</code> and the Python scorer reads it on the next
+        <b> Re-score</b> (weights merge over the committed defaults). Changes take effect the next run.
       </p>
     </div>
   );
