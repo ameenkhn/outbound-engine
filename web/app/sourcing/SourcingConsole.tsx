@@ -251,7 +251,7 @@ export function SourcingConsole({
         <h2 className="mb-3 text-sm font-semibold">Recent runs</h2>
         <table className="w-full border-collapse">
           <thead>
-            <tr><th className="th">Job</th><th className="th">Kind</th><th className="th">Status</th><th className="th">Result / error</th><th className="th">When</th></tr>
+            <tr><th className="th">Job</th><th className="th">Kind</th><th className="th">Status</th><th className="th">Result / error</th><th className="th">Leads</th><th className="th">When</th></tr>
           </thead>
           <tbody>
             {jobs.map((j) => (
@@ -264,17 +264,35 @@ export function SourcingConsole({
                 <td className="td text-xs text-muted">
                   {j.last_error ?? (j.result ? JSON.stringify(j.result) : "—")}
                 </td>
+                <td className="td text-xs">
+                  {runLeadsHref(j) ? (
+                    <a href={runLeadsHref(j)!} className="text-accent hover:underline whitespace-nowrap">View leads →</a>
+                  ) : <span className="text-muted">—</span>}
+                </td>
                 <td className="td text-xs text-muted">{new Date(j.created_at).toLocaleString()}</td>
               </tr>
             ))}
             {jobs.length === 0 && (
-              <tr><td className="td text-muted" colSpan={5}>No runs yet.</td></tr>
+              <tr><td className="td text-muted" colSpan={6}>No runs yet.</td></tr>
             )}
           </tbody>
         </table>
       </div>
     </div>
   );
+}
+
+/** Deep-link a source_run to the leads it produced.
+ *  spec run → filter by target_spec_id; single-source run → filter by source;
+ *  otherwise (multi-source keyword run) → all leads. */
+function runLeadsHref(j: AppJob): string | null {
+  if (j.kind !== "source_run") return null;
+  const r = (j.result ?? {}) as Record<string, unknown>;
+  const specId = r.spec_id as number | null | undefined;
+  if (typeof specId === "number") return `/leads?spec=${specId}`;
+  const sources = (r.sources as string[] | undefined) ?? [];
+  if (sources.length === 1) return `/leads?source=${encodeURIComponent(sources[0])}`;
+  return "/leads";
 }
 
 function statusClass(s: string): string {

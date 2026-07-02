@@ -9,7 +9,14 @@ export interface LeadFilters {
   status?: string;
   segment?: string;
   minScore?: number;
+  source?: string;   // where the lead came from: import | instagram | websearch | …
+  spec?: number;     // target_spec_id — leads produced by a specific approved spec run
 }
+
+// Sources a lead can originate from (for the Leads "Source" filter dropdown).
+export const LEAD_SOURCES = [
+  "import", "instagram", "linkedin", "youtube", "meta_ads", "websearch",
+] as const;
 
 export const CSV_COLS = [
   "id", "identity_key", "segment", "niche", "platform",
@@ -22,6 +29,8 @@ export function applyFilters(query: any, f: LeadFilters) {
   if (f.platform) query = query.eq("platform", f.platform);
   if (f.status) query = query.eq("status", f.status);
   if (f.segment) query = query.eq("segment", f.segment);
+  if (f.source) query = query.eq("source", f.source);
+  if (typeof f.spec === "number" && !Number.isNaN(f.spec)) query = query.eq("target_spec_id", f.spec);
   if (typeof f.minScore === "number" && !Number.isNaN(f.minScore)) {
     query = query.gte("icp_score", f.minScore);
   }
