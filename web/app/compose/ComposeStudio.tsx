@@ -8,9 +8,11 @@ type Mode = "template" | "ai";
 
 const TEMPLATES: Record<Channel, { name: string; subject?: string; body: string }[]> = {
   whatsapp: [
-    { name: "Warm intro", body: "Hi {{first_name}}, loved your work in {{niche}}! I'm with Exly — we help {{niche}} creators sell & scale their courses. Open to a quick chat? (reply STOP to opt out)" },
-    { name: "Value-led", body: "Hey {{first_name}}, saw you're doing great things in {{niche}}. Exly gives creators a done-for-you platform to launch, sell and grow. Worth a 10-min look? (reply STOP to opt out)" },
-    { name: "Direct", body: "Hi {{first_name}} — quick one. We help {{niche}} coaches turn their audience into course revenue with Exly. Can I share how? (reply STOP to opt out)" },
+    // Default matches the approved WATI template `outreach_outbound`. On WhatsApp
+    // the message that actually sends is this approved template; only {{1}} (the
+    // first name) changes per lead, so keep the wording identical to WATI.
+    { name: "Exly intro (WATI · outreach_outbound)", body: "Hi {{1}}! 👋\n\nI'm reaching out from Exly — we help creators and coaches in India sell their courses, take bookings, and get paid, all from one platform.\n\nWould you be open to a quick look at how it could work for your audience?" },
+    { name: "Short intro", body: "Hi {{1}}! 👋 I'm with Exly — we help Indian creators & coaches sell courses, take bookings and get paid, all from one platform. Open to a quick look?" },
   ],
   email: [
     { name: "Quick idea", subject: "A quick idea for your {{niche}} offer", body: "Hi {{first_name}},\n\nI came across your work in {{niche}} and thought Exly could help you package and sell it — one platform for courses, payments, and your audience.\n\nOpen to a quick call this week?\n\n— Ameen, Exly\n\nNot relevant? Reply STOP and I won't reach out again." },
@@ -20,6 +22,8 @@ const TEMPLATES: Record<Channel, { name: string; subject?: string; body: string 
 
 function fill(text: string, name: string, niche: string): string {
   return text
+    // {{1}} = WhatsApp/WATI first-name variable; {{first_name}} / {{niche}} = our own.
+    .replace(/\{\{\s*1\s*\}\}/g, name || "there")
     .replace(/\{\{\s*first_name\s*\}\}/gi, name || "there")
     .replace(/\{\{\s*niche\s*\}\}/gi, niche || "your niche");
 }
@@ -189,7 +193,11 @@ export function ComposeStudio({
             </div>
           )}
           <div>
-            <label className="mb-1 block text-xs text-muted">Message · use <code>{"{{first_name}}"}</code> and <code>{"{{niche}}"}</code></label>
+            <label className="mb-1 block text-xs text-muted">
+              {channel === "whatsapp"
+                ? <>Message · WhatsApp sends your approved WATI template; <code>{"{{1}}"}</code> = first name</>
+                : <>Message · use <code>{"{{first_name}}"}</code> and <code>{"{{niche}}"}</code></>}
+            </label>
             <textarea className="input font-mono text-xs" rows={channel === "email" ? 9 : 5}
               value={body} onChange={(e) => setBody(e.target.value)} />
           </div>
