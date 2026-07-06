@@ -50,15 +50,20 @@ export function ComposeStudio({
   const [audience, setAudience] = useState<"leads" | "test">("leads");
   const [leads, setLeads] = useState<SendableLead[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [recipFilter, setRecipFilter] = useState("");   // optional niche filter for recipients (empty = all)
   const [loadingLeads, startLoad] = useTransition();
 
   function loadLeads(onlyId?: number) {
     startLoad(async () => {
-      // when preselecting a lead, don't constrain by the niche box
-      const r = await listSendableLeads({ channel, niche: onlyId ? undefined : niche });
+      // Load ALL leads reachable on this channel. Niche is an OPTIONAL filter
+      // (recipFilter), NOT the personalization niche box — so "all leads" show
+      // by default. limit high so the whole reachable list appears.
+      const r = await listSendableLeads({ channel, niche: onlyId ? undefined : (recipFilter.trim() || undefined), limit: 1000 });
       if (r.ok) {
         setLeads(r.leads);
         setSelected(new Set(onlyId ? r.leads.filter((l) => l.id === onlyId).map((l) => l.id) : r.leads.map((l) => l.id)));
+        if (!onlyId && r.leads.length === 0) setSendState({ ok: false, text: `No leads with a ${channel === "whatsapp" ? "WhatsApp number" : "email"}${recipFilter ? ` in “${recipFilter}”` : ""}.` });
+        else setSendState(null);
       } else setSendState({ ok: false, text: r.error });
     });
   }
@@ -106,7 +111,11 @@ export function ComposeStudio({
   function switchChannel(ch: Channel) {
     setChannel(ch);
     setTplIdx(0);
-    if (mode === "template") applyTemplate(ch, 0);
+    // WhatsApp cold sends can ONLY use the approved template — no AI free-text.
+    // Force template mode so we never show AI-generate on WhatsApp.
+    const nextMode: Mode = ch === "whatsapp" ? "template" : mode;
+    setMode(nextMode);
+    if (nextMode === "template") applyTemplate(ch, 0);
   }
 
   function aiGenerate() {
@@ -142,20 +151,27 @@ export function ComposeStudio({
           ))}
         </div>
 
-        {/* mode: template vs AI */}
+        {/* mode: template vs AI — AI free-text is EMAIL-ONLY (WhatsApp cold sends
+             must use the approved template, so we don't offer AI there). */}
         <div className="card space-y-3">
-          <div className="flex gap-2">
-            <button onClick={() => { setMode("template"); applyTemplate(channel, tplIdx); }}
-              className={"flex-1 rounded-lg border px-3 py-2 text-sm font-medium " +
-                (mode === "template" ? "border-accent text-accent" : "border-line text-muted hover:text-ink")}>
-              📋 Use a template
-            </button>
-            <button onClick={() => setMode("ai")}
-              className={"flex-1 rounded-lg border px-3 py-2 text-sm font-medium " +
-                (mode === "ai" ? "border-accent text-accent" : "border-line text-muted hover:text-ink")}>
-              ✨ Generate with AI
-            </button>
-          </div>
+          {channel === "email" ? (
+            <div className="flex gap-2">
+              <button onClick={() => { setMode("template"); applyTemplate(channel, tplIdx); }}
+                className={"flex-1 rounded-lg border px-3 py-2 text-sm font-medium " +
+                  (mode === "template" ? "border-accent text-accent" : "border-line text-muted hover:text-ink")}>
+                📋 Use a template
+              </button>
+              <button onClick={() => setMode("ai")}
+                className={"flex-1 rounded-lg border px-3 py-2 text-sm font-medium " +
+                  (mode === "ai" ? "border-accent text-accent" : "border-line text-muted hover:text-ink")}>
+                ✨ Generate with AI
+              </button>
+            </div>
+          ) : (
+            <p className="rounded-lg border border-line px-3 py-2 text-xs text-muted">
+              📋 WhatsApp uses your <b className="text-ink">approved WATI template</b>. Only <code>{"{{1}}"}</code> (first name) changes per lead — free-text/AI isn’t allowed by WhatsApp for cold sends. Use <b className="text-ink">Email</b> for fully custom or AI-written copy.
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -226,17 +242,20 @@ export function ComposeStudio({
             </div>
           ) : (
             <>
-              <div className="flex flex-wrap items-center gap-3">
-                <button className="btn-ghost text-xs" disabled={loadingLeads} onClick={() => loadLeads()}>
-                  {loadingLeads ? "Loading…" : `Load ${channel === "whatsapp" ? "WhatsApp" : "email"} leads` + (niche ? ` · ${niche}` : "")}
+              <div className="flex flex-wrap items-center gap-2">
+                <button className="btn text-xs" disabled={loadingLeads} onClick={() => loadLeads()}>
+                  {loadingLeads ? "Loading…" : `Load ${channel === "whatsapp" ? "WhatsApp" : "email"} leads`}
                 </button>
-                {leads.length > 0 && <span className="text-xs text-muted">{selected.size}/{leads.length} selected</span>}
+                <input className="input h-8 w-40 text-xs" placeholder="filter by niche (optional)"
+                  value={recipFilter} onChange={(e) => setRecipFilter(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") loadLeads(); }} />
                 {leads.length > 0 && (
                   <button className="text-xs text-accent hover:underline"
                     onClick={() => setSelected(selected.size === leads.length ? new Set() : new Set(leads.map((l) => l.id)))}>
                     {selected.size === leads.length ? "Clear all" : "Select all"}
                   </button>
                 )}
+                {leads.length > 0 && <span className="ml-auto text-xs text-muted">{selected.size}/{leads.length} selected</span>}
               </div>
               {leads.length > 0 && (
                 <div className="max-h-52 space-y-0.5 overflow-auto rounded-lg border border-line p-2">

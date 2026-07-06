@@ -179,7 +179,7 @@ export async function sendCampaign(input: {
 }): Promise<{ ok: true; sent: number; failed: number } | { ok: false; error: string }> {
   if (!input.leadIds?.length) return { ok: false, error: "Select at least one lead." };
   if (!input.body?.trim()) return { ok: false, error: "Message is empty." };
-  if (input.leadIds.length > 60) return { ok: false, error: "Send to at most 60 leads per batch (rate limits)." };
+  if (input.leadIds.length > 250) return { ok: false, error: "Send to at most 250 leads per batch (WhatsApp daily tier / rate limits)." };
 
   const supa = getServerClient();
   const { data, error } = await supa
@@ -189,7 +189,8 @@ export async function sendCampaign(input: {
   if (error) return { ok: false, error: error.message };
 
   const rows = (data ?? []) as any[];
-  const results = await Promise.all(rows.map(async (r) => {
+
+  async function sendToLead(r: any) {
     const chans = (r.channels || []) as { type: string; handle: string }[];
     r.channel_email = chans.find((c) => c.type === "email")?.handle;
     r.channel_phone = chans.find((c) => c.type === "whatsapp")?.handle;
@@ -214,7 +215,16 @@ export async function sendCampaign(input: {
       await supa.from("leads").update({ status: "contacted" }).eq("id", r.id).eq("status", "new");
     }
     return { id: r.id, ok: sent.ok, to };
-  }));
+  }
+
+  // Send in small concurrent chunks so a large batch doesn't hammer the provider
+  // (WATI/Resend) with hundreds of simultaneous requests and trip rate limits.
+  const CHUNK = 8;
+  const results: { id: number; ok: boolean; to: string | null }[] = [];
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const part = await Promise.all(rows.slice(i, i + CHUNK).map(sendToLead));
+    results.push(...part);
+  }
 
   const sent = results.filter((x) => x.ok).length;
   return { ok: true, sent, failed: results.length - sent };
