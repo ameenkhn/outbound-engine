@@ -66,6 +66,30 @@ async function sendWhatsAppAisensy(to: string, body: string, waParams?: string[]
   return { ok: true, id: "accepted" };
 }
 
+// ── Email provider: SMTP (send AS your real mailbox, no DNS changes) ────────
+// Uses your existing email account (Google Workspace / Outlook / Zoho) over SMTP.
+// Because the message goes THROUGH that provider, it inherits the domain's already-
+// configured SPF/DKIM — so you can send from affiliate@myscoot.in without touching
+// DNS. Env: SMTP_HOST, SMTP_PORT (default 587), SMTP_USER, SMTP_PASS, EMAIL_FROM
+// (defaults to SMTP_USER). For Gmail/Workspace use an App Password as SMTP_PASS.
+async function sendEmailSmtp(to: string, subject: string, body: string): Promise<SendResult> {
+  const host = process.env.SMTP_HOST!;
+  const user = process.env.SMTP_USER!;
+  const pass = process.env.SMTP_PASS!;
+  const port = Number(process.env.SMTP_PORT || "587");
+  const from = process.env.EMAIL_FROM || user;
+  try {
+    const nodemailer = (await import("nodemailer")).default;
+    const transporter = nodemailer.createTransport({
+      host, port, secure: port === 465, auth: { user, pass },
+    });
+    const info = await transporter.sendMail({ from, to, subject, text: body });
+    return { ok: true, id: String(info?.messageId || "sent") };
+  } catch (e) {
+    return { ok: false, error: `SMTP: ${(e as Error).message}` };
+  }
+}
+
 // ── low-level: send ONE message via the provider ───────────────────────────
 async function sendOne(
   channel: "whatsapp" | "email",
@@ -86,9 +110,15 @@ async function sendOne(
       }
       return await sendWhatsAppAisensy(to, body, waParams);
     }
+    // Email provider is pluggable: SMTP when configured (send AS your real mailbox
+    // e.g. affiliate@myscoot.in via Google Workspace/Outlook — NO DNS changes,
+    // since your provider already authenticates the domain), else Resend HTTP.
+    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      return await sendEmailSmtp(to, subject, body);
+    }
     const key = process.env.RESEND_API_KEY;
     const from = process.env.EMAIL_FROM;
-    if (!key || !from) return { ok: false, error: "Set RESEND_API_KEY + EMAIL_FROM in Vercel." };
+    if (!key || !from) return { ok: false, error: "Set SMTP_* (your mailbox) or RESEND_API_KEY + EMAIL_FROM in Vercel." };
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
