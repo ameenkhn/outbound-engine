@@ -79,7 +79,9 @@ export function ComposeStudio({
     startSend(async () => {
       if (audience === "test") {
         const r = await sendMessage({ channel, to: recipient, subject: fill(subject, sampleName, niche), body: fill(body, sampleName, niche), firstName: sampleName });
-        setSendState(r.ok ? { ok: true, text: "Sent ✓" } : { ok: false, text: r.error });
+        setSendState(r.ok
+          ? { ok: true, text: channel === "whatsapp" ? "Accepted by WATI ✓ — check delivery in WATI/Outreach" : "Sent ✓" }
+          : { ok: false, text: r.error });
         return;
       }
       const ids = [...selected];
@@ -247,7 +249,7 @@ export function ComposeStudio({
           )}
           {sendState && <p className={"text-sm " + (sendState.ok ? "text-green-600" : "text-red-600")}>{sendState.text}</p>}
           <p className="text-[11px] text-muted">
-            Sends via {channel === "whatsapp" ? "AiSensy" : "Resend"}, personalized per lead. Every send is logged in Outreach &amp; moves the lead to “contacted”.
+            Sends via {channel === "whatsapp" ? "WATI" : "Resend"}, personalized per lead. Every send is logged in Outreach &amp; moves the lead to “contacted”.
           </p>
         </div>
       </div>

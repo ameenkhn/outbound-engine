@@ -144,7 +144,8 @@ The loop keeps going *after* the send:
 | Var | Purpose |
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude Haiku copy + suggested replies |
-| `AISENSY_API_KEY` + `AISENSY_CAMPAIGN` | WhatsApp send (AiSensy campaign API) |
+| `WATI_API_ENDPOINT` + `WATI_ACCESS_TOKEN` + `WATI_TEMPLATE_NAME` (+ `WATI_BROADCAST_NAME`) | WhatsApp send via **WATI** (used when set; preferred) |
+| `AISENSY_API_KEY` + `AISENSY_CAMPAIGN` | WhatsApp send via AiSensy (fallback if WATI unset) |
 | `RESEND_API_KEY` + `EMAIL_FROM` | Transactional email send (Resend) |
 | `INBOUND_WEBHOOK_SECRET` | _(optional)_ shared secret for the inbound webhook URLs |
 | `AUTORESPOND` | _(optional)_ `1` turns on the RAG auto-responder (email auto-sends; WhatsApp drafts) |

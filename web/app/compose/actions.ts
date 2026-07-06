@@ -2,6 +2,70 @@
 
 import { getServerClient } from "@/lib/supabase/server";
 
+type SendResult = { ok: boolean; id?: string; error?: string };
+
+// ── WhatsApp provider: WATI ────────────────────────────────────────────────
+// Sends a pre-approved template. WATI template variables are positional named
+// "1","2",… — our template's {{1}} = first name, so waParams map name "1"→value.
+// Env: WATI_API_ENDPOINT (your tenant base URL from WATI → API Docs),
+//      WATI_ACCESS_TOKEN (Bearer), WATI_TEMPLATE_NAME, WATI_BROADCAST_NAME (optional).
+async function sendWhatsAppWati(to: string, body: string, waParams?: string[]): Promise<SendResult> {
+  const endpoint = (process.env.WATI_API_ENDPOINT || "").replace(/\/+$/, "");
+  const token = process.env.WATI_ACCESS_TOKEN;
+  const template = process.env.WATI_TEMPLATE_NAME;
+  const broadcast = process.env.WATI_BROADCAST_NAME || "outbound_engine";
+  if (!endpoint || !token) return { ok: false, error: "Set WATI_API_ENDPOINT + WATI_ACCESS_TOKEN in Vercel." };
+  if (!template) return { ok: false, error: "Set WATI_TEMPLATE_NAME (your approved WATI template) in Vercel." };
+
+  const num = to.replace(/[^\d]/g, "");
+  const values = waParams && waParams.length ? waParams : [body];
+  const parameters = values.map((v, i) => ({ name: String(i + 1), value: v }));
+  const auth = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
+
+  const res = await fetch(`${endpoint}/api/v1/sendTemplateMessage?whatsappNumber=${encodeURIComponent(num)}`, {
+    method: "POST",
+    headers: { authorization: auth, "content-type": "application/json" },
+    body: JSON.stringify({ template_name: template, broadcast_name: broadcast, parameters }),
+  });
+  const raw = await res.text();
+  let parsed: unknown = raw;
+  try { parsed = JSON.parse(raw); } catch { /* keep raw */ }
+  const obj = (parsed && typeof parsed === "object" ? parsed : {}) as Record<string, unknown>;
+  // WATI replies { result: true/false, info?: "..." }.
+  const rejected = obj.result === false || obj.ok === false;
+  if (!res.ok || rejected) {
+    const detail = (obj.info || obj.message || obj.error || (typeof parsed === "string" ? parsed : "")) as string;
+    return { ok: false, error: `WATI ${res.status}${detail ? `: ${String(detail).slice(0, 200)}` : ""}` };
+  }
+  return { ok: true, id: "accepted" };
+}
+
+// ── WhatsApp provider: AiSensy (fallback) ──────────────────────────────────
+async function sendWhatsAppAisensy(to: string, body: string, waParams?: string[]): Promise<SendResult> {
+  const key = process.env.AISENSY_API_KEY;
+  const campaign = process.env.AISENSY_CAMPAIGN;
+  if (!key || !campaign) return { ok: false, error: "Configure WATI (WATI_API_ENDPOINT/…) or AiSensy (AISENSY_API_KEY + AISENSY_CAMPAIGN) in Vercel." };
+  const res = await fetch("https://backend.aisensy.com/campaign/t1/api/v2", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      apiKey: key, campaignName: campaign,
+      destination: to.replace(/[^\d]/g, ""), userName: "Exly Outbound",
+      templateParams: waParams && waParams.length ? waParams : [body],
+    }),
+  });
+  const raw = await res.text();
+  let parsed: unknown = raw;
+  try { parsed = JSON.parse(raw); } catch { /* keep raw */ }
+  const obj = (parsed && typeof parsed === "object" ? parsed : {}) as Record<string, unknown>;
+  const rejected = obj.success === false || obj.status === "error" || (typeof obj.errorMessage === "string");
+  if (!res.ok || rejected) {
+    const detail = (obj.errorMessage || obj.error || obj.message || (typeof parsed === "string" ? parsed : "")) as string;
+    return { ok: false, error: `AiSensy ${res.status}${detail ? `: ${String(detail).slice(0, 200)}` : ""}` };
+  }
+  return { ok: true, id: "accepted" };
+}
+
 // ── low-level: send ONE message via the provider ───────────────────────────
 async function sendOne(
   channel: "whatsapp" | "email",
@@ -15,20 +79,12 @@ async function sendOne(
 ): Promise<{ ok: boolean; id?: string; error?: string }> {
   try {
     if (channel === "whatsapp") {
-      const key = process.env.AISENSY_API_KEY;
-      const campaign = process.env.AISENSY_CAMPAIGN;
-      if (!key || !campaign) return { ok: false, error: "Set AISENSY_API_KEY + AISENSY_CAMPAIGN in Vercel." };
-      const res = await fetch("https://backend.aisensy.com/campaign/t1/api/v2", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          apiKey: key, campaignName: campaign,
-          destination: to.replace(/[^\d]/g, ""), userName: "Exly Outbound",
-          templateParams: waParams && waParams.length ? waParams : [body],
-        }),
-      });
-      if (!res.ok) return { ok: false, error: `AiSensy ${res.status}` };
-      return { ok: true, id: "sent" };
+      // Provider is pluggable: WATI when configured, else AiSensy. Both send a
+      // pre-approved WhatsApp template; {{1}} is filled with the first name.
+      if (process.env.WATI_API_ENDPOINT && process.env.WATI_ACCESS_TOKEN) {
+        return await sendWhatsAppWati(to, body, waParams);
+      }
+      return await sendWhatsAppAisensy(to, body, waParams);
     }
     const key = process.env.RESEND_API_KEY;
     const from = process.env.EMAIL_FROM;

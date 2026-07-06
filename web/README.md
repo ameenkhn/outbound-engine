@@ -40,7 +40,8 @@ python -m orchestration.app_jobs --once     # or omit --once to loop
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public | project URL + browser reads |
 | `SUPABASE_SERVICE_ROLE_KEY` | **server only** | server components / actions; never `NEXT_PUBLIC_` |
 | `ANTHROPIC_API_KEY` | server | AI copy + RAG replies |
-| `AISENSY_API_KEY` / `AISENSY_CAMPAIGN` | server | WhatsApp send |
+| `WATI_API_ENDPOINT` / `WATI_ACCESS_TOKEN` / `WATI_TEMPLATE_NAME` (+ `WATI_BROADCAST_NAME`) | server | WhatsApp send via **WATI** (preferred when set); reply webhook `/api/webhooks/wati` |
+| `AISENSY_API_KEY` / `AISENSY_CAMPAIGN` | server | WhatsApp send via AiSensy (fallback if WATI unset) |
 | `RESEND_API_KEY` / `EMAIL_FROM` | server | email send |
 | `INBOUND_WEBHOOK_SECRET`, `AUTORESPOND`, `GOOGLE_*` | server | optional (webhooks, auto-responder, calendar) |
 
