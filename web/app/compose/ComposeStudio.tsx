@@ -173,11 +173,14 @@ export function ComposeStudio({
             </p>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs text-muted">Niche</label>
-              <input className="input" value={niche} onChange={(e) => setNiche(e.target.value)} />
-            </div>
+          <div className={"grid gap-3 " + (channel === "email" ? "grid-cols-2" : "grid-cols-1")}>
+            {/* Niche only matters for email personalization; WhatsApp template has no niche. */}
+            {channel === "email" && (
+              <div>
+                <label className="mb-1 block text-xs text-muted">Niche</label>
+                <input className="input" value={niche} onChange={(e) => setNiche(e.target.value)} />
+              </div>
+            )}
             <div>
               <label className="mb-1 block text-xs text-muted">Sample first name (preview)</label>
               <input className="input" value={sampleName} onChange={(e) => setSampleName(e.target.value)} />
@@ -211,14 +214,19 @@ export function ComposeStudio({
           <div>
             <label className="mb-1 block text-xs text-muted">
               {channel === "whatsapp"
-                ? <>Message · WhatsApp sends your approved WATI template; <code>{"{{1}}"}</code> = first name</>
+                ? <>Message · approved WATI template (read-only) — each lead’s first name is filled in automatically</>
                 : <>Message · use <code>{"{{first_name}}"}</code> and <code>{"{{niche}}"}</code></>}
             </label>
-            <textarea className="input font-mono text-xs" rows={channel === "email" ? 9 : 5}
-              value={body} onChange={(e) => setBody(e.target.value)} />
+            {channel === "whatsapp" ? (
+              <textarea className="input cursor-not-allowed font-mono text-xs opacity-90" rows={6}
+                value={previewBody} readOnly />
+            ) : (
+              <textarea className="input font-mono text-xs" rows={9}
+                value={body} onChange={(e) => setBody(e.target.value)} />
+            )}
           </div>
           <p className="text-[11px] text-muted">
-            {body.length} chars{channel === "whatsapp" && body.length > 350 ? " · long for WhatsApp (keep under ~350)" : ""}
+            {(channel === "whatsapp" ? previewBody : body).length} chars{channel === "whatsapp" && previewBody.length > 350 ? " · long for WhatsApp (keep under ~350)" : ""}
           </p>
         </div>
 
